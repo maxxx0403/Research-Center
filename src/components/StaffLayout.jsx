@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate, Outlet } from 'react-router-dom';
-import { LayoutDashboard, CalendarCheck, FlaskConical, Package, BarChart3, Settings, LogOut, Menu, ChevronDown, MapPin, History } from 'lucide-react';
+import { LayoutDashboard, CalendarCheck, FlaskConical, Package, BarChart3, Settings, LogOut, Menu, ChevronDown, CalendarOff, History } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import NotificationBell from '@/components/NotificationBell';
@@ -11,12 +11,13 @@ const menuItems = [
 { to: '/staff/equipment', icon: Package, label: 'Equipment' },
 { to: '/staff/reservations', icon: CalendarCheck, label: 'Reservations' },
 { to: '/staff/reports', icon: BarChart3, label: 'Reports' },
-{ to: '/staff/activity-logs', icon: History, label: 'Activity Log' }];
+{ to: '/staff/activity-logs', icon: History, label: 'Activity Log' },
+{ to: '/staff/unavailability', icon: CalendarOff, label: 'My Unavailable Dates' }];
 
 const StaffLayout = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, isStaff, assignedRooms, loading, signOut } = useAuth();
+  const { user, isStaff, loading, signOut } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -45,19 +46,6 @@ const StaffLayout = () => {
             <div><div className="font-heading font-bold text-sm leading-tight">CvSU Research Center</div><div className="text-[0.7rem] text-primary-foreground/50">Staff Panel</div></div>
           </div>
         </div>
-
-        {assignedRooms.length > 0 &&
-        <div className="mx-5 mt-4 px-3 py-2 rounded-lg bg-primary-foreground/10 text-xs font-semibold text-primary-foreground/80">
-            <div className="flex items-center gap-2 mb-1"><MapPin className="w-3.5 h-3.5 flex-shrink-0" /> Assigned Rooms</div>
-            <div className="flex flex-wrap gap-1">
-              {assignedRooms.map((r) =>
-              <span key={r.id} className="bg-primary-foreground/15 px-1.5 py-0.5 rounded">
-                  {r.floor ? `${r.floor} · ` : ''}{r.lab_name}
-                </span>
-              )}
-            </div>
-          </div>
-        }
 
         <nav className="flex-1 py-3 mt-2">
           {menuItems.map((item) =>

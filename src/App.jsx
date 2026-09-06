@@ -28,6 +28,7 @@ import StaffDashboard from "./pages/staff/StaffDashboard";
 import StaffActivityLogs from "./pages/staff/StaffActivityLogs";
 import StaffReports from "./pages/staff/StaffReports";
 import StaffSettings from "./pages/staff/StaffSettings";
+import StaffUnavailability from "./pages/staff/StaffUnavailability";
 import UserDashboard from "./pages/user/UserDashboard";
 import UserReserve from "./pages/user/UserReserve";
 import UserReserveEquipment from "./pages/user/UserReserveEquipment";
@@ -76,6 +77,7 @@ const App = () =>
               <Route path="reservations" element={<StaffReservations />} />
               <Route path="activity-logs" element={<StaffActivityLogs />} />
               <Route path="reports" element={<StaffReports />} />
+              <Route path="unavailability" element={<StaffUnavailability />} />
               <Route path="settings" element={<StaffSettings />} />
             </Route>
             <Route path="/user" element={<UserLayout />}>
