@@ -7,7 +7,7 @@ import { validateReservationFields, sanitizeText } from '@/lib/validation';
 
 const isClosedDay = (dateStr) => {
   const day = new Date(dateStr).getDay();
-  return day === 5 || day === 6 || day === 0;
+  return day === 0;
 };
 
 const isOutsideHours = (dateStr) => {
@@ -19,7 +19,7 @@ const isOutsideHours = (dateStr) => {
 const validateDateTime = (start, end) => {
   if (!start || !end) return 'Please fill in both start and end date/time.';
   if (isClosedDay(start) || isClosedDay(end))
-    return 'Closed on Friday, Saturday, and Sunday. Please select Monday to Thursday only.';
+    return 'Closed on Sundays. Please select Monday to Saturday only.';
   if (isOutsideHours(start) || isOutsideHours(end))
     return 'Operating hours are 7:00 AM to 6:00 PM only.';
   if (new Date(end) <= new Date(start))

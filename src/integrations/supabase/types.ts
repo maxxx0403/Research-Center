@@ -358,6 +358,30 @@ export type Database = {
           },
         ]
       }
+      staff_unavailability: {
+        Row: {
+          id: string
+          user_id: string
+          unavailable_date: string
+          reason: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          unavailable_date: string
+          reason?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          unavailable_date?: string
+          reason?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
       staff_room_assignments: {
         Row: {
           id: string

@@ -3,8 +3,8 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import StatusBadge from '@/components/StatusBadge';
 
-// Days 0=Sun, 5=Fri, 6=Sat are closed
-const CLOSED_DAYS = [0, 5, 6];
+// Only Sunday (0) is closed; Friday and Saturday are open with the same hours.
+const CLOSED_DAYS = [0];
 
 const isWeekend = (year, month, day) => {
   const dow = new Date(year, month, day).getDay();
@@ -106,7 +106,7 @@ export const ReservationCalendarView = ({ labId = null }) => {
         </div>
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <div className="w-3 h-3 rounded bg-destructive/10 border border-destructive/30" />
-          Closed (Fri / Sat / Sun)
+          Closed (Sun)
         </div>
       </div>
 
