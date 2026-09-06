@@ -45,10 +45,16 @@ const StaffSettings = () => {
       return;
     }
     setAddingDate(true);
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('full_name')
+      .eq('user_id', user.id)
+      .maybeSingle();
     const { error } = await supabase.from('staff_unavailability').insert({
       user_id: user.id,
       unavailable_date: newDate,
       reason: newReason.trim() || null,
+      staff_name: profile?.full_name || user.email || 'A staff member',
     });
     setAddingDate(false);
     if (error) {

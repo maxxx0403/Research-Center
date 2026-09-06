@@ -364,6 +364,7 @@ export type Database = {
           user_id: string
           unavailable_date: string
           reason: string | null
+          staff_name: string | null
           created_at: string
         }
         Insert: {
@@ -371,6 +372,7 @@ export type Database = {
           user_id: string
           unavailable_date: string
           reason?: string | null
+          staff_name?: string | null
           created_at?: string
         }
         Update: {
@@ -378,6 +380,7 @@ export type Database = {
           user_id?: string
           unavailable_date?: string
           reason?: string | null
+          staff_name?: string | null
           created_at?: string
         }
         Relationships: []

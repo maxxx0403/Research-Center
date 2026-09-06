@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, UserX } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import StatusBadge from '@/components/StatusBadge';
 
@@ -11,14 +11,22 @@ const isWeekend = (year, month, day) => {
   return CLOSED_DAYS.includes(dow);
 };
 
+const toDateKey = (year, month, day) => {
+  const mm = String(month + 1).padStart(2, '0');
+  const dd = String(day).padStart(2, '0');
+  return `${year}-${mm}-${dd}`;
+};
+
 export const ReservationCalendarView = ({ labId = null }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [reservations, setReservations] = useState([]);
+  const [staffUnavailability, setStaffUnavailability] = useState({});
   const [loading, setLoading] = useState(false);
   const [selectedDate, setSelectedDate] = useState(null);
 
   useEffect(() => {
     fetchReservations();
+    fetchStaffUnavailability();
   }, [currentDate, labId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchReservations = async () => {
@@ -46,6 +54,39 @@ export const ReservationCalendarView = ({ labId = null }) => {
       console.error('Error fetching reservations:', error);
     }
     setLoading(false);
+  };
+
+  const fetchStaffUnavailability = async () => {
+    try {
+      const year = currentDate.getFullYear();
+      const month = currentDate.getMonth();
+      const monthStartKey = toDateKey(year, month, 1);
+      const monthEndKey = toDateKey(year, month, new Date(year, month + 1, 0).getDate());
+
+      const { data: rows, error } = await supabase
+        .from('staff_unavailability')
+        .select('*')
+        .gte('unavailable_date', monthStartKey)
+        .lte('unavailable_date', monthEndKey);
+      if (error) throw error;
+
+      const grouped = {};
+      (rows || []).forEach((r) => {
+        if (!grouped[r.unavailable_date]) grouped[r.unavailable_date] = [];
+        grouped[r.unavailable_date].push({
+          name: r.staff_name || 'A staff member',
+          reason: r.reason,
+        });
+      });
+      setStaffUnavailability(grouped);
+    } catch (error) {
+      console.error('Error fetching staff unavailability:', error);
+    }
+  };
+
+  const getUnavailableStaffForDate = (day) => {
+    const key = toDateKey(currentDate.getFullYear(), currentDate.getMonth(), day);
+    return staffUnavailability[key] || [];
   };
 
   const getDaysInMonth = (date) =>
@@ -86,7 +127,7 @@ export const ReservationCalendarView = ({ labId = null }) => {
         <div>
           <h2 className="font-heading text-2xl font-bold text-primary">{monthName}</h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Bookings available <span className="font-semibold text-foreground">Monday – Thursday</span> only · 7:00 AM – 6:00 PM
+            Bookings available <span className="font-semibold text-foreground">Monday – Saturday</span> only · 7:00 AM – 6:00 PM
           </p>
         </div>
         <div className="flex gap-2">
@@ -108,6 +149,10 @@ export const ReservationCalendarView = ({ labId = null }) => {
           <div className="w-3 h-3 rounded bg-destructive/10 border border-destructive/30" />
           Closed (Sun)
         </div>
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <UserX className="w-3.5 h-3.5 text-amber-600" />
+          Staff unavailable
+        </div>
       </div>
 
       <div className="grid grid-cols-7 gap-2 mb-2">
@@ -125,6 +170,7 @@ export const ReservationCalendarView = ({ labId = null }) => {
         {days.map((day, idx) => {
           const closed = day ? isWeekend(currentDate.getFullYear(), currentDate.getMonth(), day) : false;
           const dayReservations = day && !closed ? getReservationsForDate(day) : [];
+          const unavailableStaff = day ? getUnavailableStaffForDate(day) : [];
           const isToday = day && new Date().toDateString() === new Date(currentDate.getFullYear(), currentDate.getMonth(), day).toDateString();
           const isSelected = selectedDate === day && !closed;
 
@@ -132,6 +178,7 @@ export const ReservationCalendarView = ({ labId = null }) => {
             <div
               key={idx}
               onClick={() => { if (!day || closed) return; setSelectedDate(selectedDate === day ? null : day); }}
+              title={unavailableStaff.length > 0 ? `Unavailable: ${unavailableStaff.map((s) => s.name).join(', ')}` : undefined}
               className={`min-h-[60px] sm:min-h-[80px] md:min-h-[100px] p-1.5 sm:p-2 rounded-lg border-2 transition-colors
                 ${!day ? 'bg-muted/20 border-transparent' : ''}
                 ${closed ? 'bg-destructive/5 border-destructive/20 cursor-not-allowed' : isToday ? 'border-primary bg-primary/5 cursor-pointer' : isSelected ? 'bg-primary/10 border-primary cursor-pointer' : day ? 'border-border hover:border-primary/50 hover:bg-primary/5 cursor-pointer' : ''}
@@ -139,8 +186,13 @@ export const ReservationCalendarView = ({ labId = null }) => {
             >
               {day && (
                 <>
-                  <div className={`font-semibold mb-1 text-sm ${closed ? 'text-destructive/40' : isToday ? 'text-primary' : 'text-foreground'}`}>
-                    {day}
+                  <div className="flex items-center justify-between gap-1 mb-1">
+                    <div className={`font-semibold text-sm ${closed ? 'text-destructive/40' : isToday ? 'text-primary' : 'text-foreground'}`}>
+                      {day}
+                    </div>
+                    {!closed && unavailableStaff.length > 0 && (
+                      <UserX className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+                    )}
                   </div>
                   {closed ? (
                     <div className="text-[10px] text-destructive/50 font-medium mt-1 leading-tight">No booking</div>
@@ -153,6 +205,11 @@ export const ReservationCalendarView = ({ labId = null }) => {
                       ))}
                       {dayReservations.length > 2 && (
                         <div className="text-xs text-muted-foreground px-1">+{dayReservations.length - 2} more</div>
+                      )}
+                      {unavailableStaff.length > 0 && (
+                        <div className="text-[10px] text-amber-700 px-1 truncate">
+                          {unavailableStaff.length === 1 ? unavailableStaff[0].name : `${unavailableStaff.length} staff unavailable`}
+                        </div>
                       )}
                     </div>
                   )}
@@ -168,6 +225,23 @@ export const ReservationCalendarView = ({ labId = null }) => {
           <h3 className="font-heading text-lg font-bold text-primary mb-4">
             Reservations for {new Date(currentDate.getFullYear(), currentDate.getMonth(), selectedDate).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
           </h3>
+
+          {getUnavailableStaffForDate(selectedDate).length > 0 && (
+            <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3">
+              <p className="text-xs font-bold text-amber-800 uppercase tracking-wide mb-1.5 flex items-center gap-1.5">
+                <UserX className="w-3.5 h-3.5" /> Staff unavailable this day
+              </p>
+              <ul className="space-y-0.5">
+                {getUnavailableStaffForDate(selectedDate).map((s, i) => (
+                  <li key={i} className="text-sm text-amber-900">
+                    {s.name}
+                    {s.reason && <span className="text-amber-700"> — {s.reason}</span>}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           <div className="space-y-4">
             {getReservationsForDate(selectedDate).length > 0 ? (
               getReservationsForDate(selectedDate).map((res, idx) => (
