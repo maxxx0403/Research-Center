@@ -64,6 +64,7 @@ export type Database = {
       equipment_reservations: {
         Row: {
           adviser_name: string
+          batch_id: string | null
           created_at: string
           email: string | null
           end_datetime: string
@@ -84,6 +85,7 @@ export type Database = {
         }
         Insert: {
           adviser_name?: string
+          batch_id?: string | null
           created_at?: string
           email?: string | null
           end_datetime: string
@@ -104,6 +106,7 @@ export type Database = {
         }
         Update: {
           adviser_name?: string
+          batch_id?: string | null
           created_at?: string
           email?: string | null
           end_datetime?: string
@@ -365,6 +368,7 @@ export type Database = {
           unavailable_date: string
           reason: string | null
           staff_name: string | null
+          laboratory_id: number | null
           created_at: string
         }
         Insert: {
@@ -373,6 +377,7 @@ export type Database = {
           unavailable_date: string
           reason?: string | null
           staff_name?: string | null
+          laboratory_id?: number | null
           created_at?: string
         }
         Update: {
@@ -381,9 +386,18 @@ export type Database = {
           unavailable_date?: string
           reason?: string | null
           staff_name?: string | null
+          laboratory_id?: number | null
           created_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "staff_unavailability_laboratory_id_fkey"
+            columns: ["laboratory_id"]
+            isOneToOne: false
+            referencedRelation: "laboratories"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       staff_room_assignments: {
         Row: {

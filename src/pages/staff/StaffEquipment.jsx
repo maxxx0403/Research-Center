@@ -149,7 +149,7 @@ const StaffEquipment = () => {
                     className="text-xs px-2 py-1 border border-border rounded-lg bg-card text-foreground">
 
                       <option value="available">Available</option>
-                      <option value="maintenance">Maintenance</option>
+                      <option value="maintenance">Under Maintenance</option>
                       <option value="in_use">In Use</option>
                     </select>
                     <button onClick={() => openEdit(e)} className="p-1.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors border-none cursor-pointer" title="Edit">
@@ -203,7 +203,7 @@ const StaffEquipment = () => {
                 <label className="block text-xs font-semibold text-foreground mb-1">Status</label>
                 <select name="status" value={form.status} onChange={handleChange} className={inputCls}>
                   <option value="available">Available</option>
-                  <option value="maintenance">Maintenance</option>
+                  <option value="maintenance">Under Maintenance</option>
                   <option value="in_use">In Use</option>
                 </select>
               </div>

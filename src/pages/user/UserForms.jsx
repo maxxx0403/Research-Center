@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Download, Upload, FileText, Trash2, CheckCircle2, Calendar, Clock, AlertCircle } from 'lucide-react';
+import { Download, Upload, FileText, Trash2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { validateUploadFile, sanitizeText } from '@/lib/validation';
@@ -12,9 +12,6 @@ const UserForms = () => {
   const [submissions, setSubmissions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [successMsg, setSuccessMsg] = useState('');
-  const [currentMonth, setCurrentMonth] = useState(new Date());
-  const [availabilityData, setAvailabilityData] = useState([]);
-  const [selectedDateDetail, setSelectedDateDetail] = useState(null);
 
   // Fetch user submissions
   const fetchSubmissions = async () => {
@@ -33,30 +30,11 @@ const UserForms = () => {
     setLoading(false);
   };
 
-  // Fetch admin availability (when forms/submissions are available for submission)
-  const fetchAvailability = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('admin_availability')
-        .select('*')
-        .eq('type', 'form_submission')
-        .gte('date', new Date().toISOString().split('T')[0])
-        .lte('date', new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0).toISOString().split('T')[0])
-        .order('date', { ascending: true });
-      
-      if (error) throw error;
-      setAvailabilityData(data || []);
-    } catch (error) {
-      console.error('Error fetching availability:', error);
-    }
-  };
-
   useEffect(() => {
     if (user) {
       fetchSubmissions();
-      fetchAvailability();
     }
-  }, [user, currentMonth]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleUpload = async () => {
     const file = fileRef.current?.files?.[0];
@@ -137,51 +115,21 @@ const UserForms = () => {
     }
   ];
 
-  // Calendar helpers
-  const getDaysInMonth = (date) => {
-    return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
-  };
-
-  const getFirstDayOfMonth = (date) => {
-    return new Date(date.getFullYear(), date.getMonth(), 1).getDay();
-  };
-
-  const getAvailabilityForDate = (day) => {
-    const dateStr = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day)
-      .toISOString()
-      .split('T')[0];
-    return availabilityData.find(a => a.date === dateStr);
-  };
-
-  const previousMonth = () => {
-    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1));
-  };
-
-  const nextMonth = () => {
-    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1));
-  };
-
-  const daysInMonth = getDaysInMonth(currentMonth);
-  const firstDay = getFirstDayOfMonth(currentMonth);
-  const days = Array(firstDay).fill(null).concat(Array.from({ length: daysInMonth }, (_, i) => i + 1));
-  const monthName = currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-
   const inputClass = "w-full px-4 py-3 border-2 border-border rounded-xl text-base bg-card text-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10";
 
   return (
     <div className="space-y-8">
-      {/* Submit Papers Section */}
-      <div>
-        <h2 className="font-heading text-lg font-bold text-foreground mb-4">Submit Papers</h2>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Form Upload */}
-          <div className="lg:col-span-2 bg-card rounded-xl border-2 border-border p-6">
+      {/* Submit Papers + Downloadable Forms, side by side */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+        <div>
+          <h2 className="font-heading text-lg font-bold text-foreground mb-4">Submit Papers</h2>
+          <div className="bg-card rounded-xl border-2 border-border p-6">
             {successMsg && (
               <div className="bg-success/10 border border-success/25 text-success rounded-xl p-3 mb-4 text-sm font-medium flex items-center gap-2 animate-pulse">
                 <CheckCircle2 className="w-4 h-4 flex-shrink-0" /> {successMsg}
               </div>
             )}
-            
+
             <div className="space-y-4 mb-4">
               <div>
                 <label className="block mb-1.5 font-semibold text-sm text-foreground">
@@ -196,7 +144,7 @@ const UserForms = () => {
                 />
                 <p className="text-xs text-muted-foreground mt-1">Supported: PDF, DOCX | Max: 50MB</p>
               </div>
-              
+
               <div>
                 <label className="block mb-1.5 font-semibold text-sm text-foreground">
                   Description
@@ -221,170 +169,30 @@ const UserForms = () => {
               {uploading ? 'Uploading…' : 'Submit Paper'}
             </button>
           </div>
-
-          {/* My Submissions quick preview */}
-          <div className="bg-card rounded-xl border-2 border-border p-6 flex flex-col">
-            <h3 className="font-semibold text-sm text-foreground flex items-center gap-2 mb-4">
-              <FileText className="w-4 h-4 text-primary" />
-              My Submissions ({submissions.length})
-            </h3>
-            {submissions.length === 0 ? (
-              <div className="flex-1 flex flex-col items-center justify-center text-center py-6">
-                <FileText className="w-10 h-10 text-muted-foreground/30 mb-2" />
-                <p className="text-sm text-muted-foreground">No submissions yet.</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {submissions.slice(0, 4).map((s) => {
-                  const statusColors = {
-                    submitted: 'bg-warning/10 text-warning',
-                    reviewed: 'bg-info/10 text-info',
-                    approved: 'bg-success/10 text-success',
-                    rejected: 'bg-destructive/10 text-destructive'
-                  };
-                  return (
-                    <div key={s.id} className="flex items-center justify-between gap-2 border border-border rounded-lg px-3 py-2">
-                      <div className="min-w-0 flex items-center gap-2">
-                        <FileText className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-                        <span className="text-xs font-medium text-foreground truncate">{s.file_name}</span>
-                      </div>
-                      <span className={`text-[0.65rem] font-semibold px-2 py-0.5 rounded-full flex-shrink-0 ${statusColors[s.status] || 'bg-muted text-muted-foreground'}`}>
-                        {s.status.charAt(0).toUpperCase() + s.status.slice(1)}
-                      </span>
-                    </div>
-                  );
-                })}
-                {submissions.length > 4 && (
-                  <p className="text-xs text-muted-foreground text-center pt-1">+{submissions.length - 4} more below</p>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Submission Availability Calendar */}
-      <div className="bg-card rounded-xl border-2 border-border p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="font-semibold text-sm text-foreground flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-primary" />
-            Submission Availability
-          </h3>
-          <div className="flex items-center gap-2">
-            <button 
-              onClick={previousMonth}
-              className="p-1 hover:bg-muted rounded text-sm"
-              type="button"
-            >
-              ←
-            </button>
-            <span className="text-xs font-semibold text-foreground">{monthName}</span>
-            <button 
-              onClick={nextMonth}
-              className="p-1 hover:bg-muted rounded text-sm"
-              type="button"
-            >
-              →
-            </button>
-          </div>
         </div>
 
-        {/* Mini calendar */}
-        <div className="grid grid-cols-7 gap-1 mb-3 max-w-md">
-          {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map(d => (
-            <div key={d} className="text-center text-xs font-bold text-muted-foreground p-1">
-              {d}
-            </div>
-          ))}
-        </div>
-
-        <div className="grid grid-cols-7 gap-1 max-w-md">
-          {days.map((day, idx) => {
-            const availability = day ? getAvailabilityForDate(day) : null;
-            const isToday = day && new Date().toDateString() === 
-              new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day).toDateString();
-            
-            return (
-              <button
-                key={idx}
-                onClick={() => day && availability && setSelectedDateDetail(availability)}
-                className={`aspect-square text-xs rounded font-medium transition-all ${
-                  !day ? 'bg-transparent' :
-                  availability ? 'bg-success/20 text-success hover:bg-success/30 cursor-pointer' :
-                  isToday ? 'border-2 border-primary text-foreground' :
-                  'bg-muted/30 text-muted-foreground'
-                }`}
-                type="button"
+        <div>
+          <h2 className="font-heading text-lg font-bold text-foreground mb-4">Downloadable Forms</h2>
+          <div className="grid grid-cols-1 gap-4">
+            {downloadForms.map((form) => (
+              <a 
+                key={form.code} 
+                href={form.file} 
+                download
+                className="bg-card rounded-xl border-2 border-border p-5 flex items-start gap-4 no-underline hover:border-primary hover:shadow-md transition-all group"
               >
-                {day}
-              </button>
-            );
-          })}
-        </div>
-
-        <p className="text-xs text-muted-foreground mt-3">
-          <span className="inline-block w-3 h-3 bg-success/20 rounded mr-2"></span>
-          Available for submission
-        </p>
-      </div>
-
-      {/* Selected Date Details */}
-      {selectedDateDetail && (
-        <div className="bg-card rounded-xl border-2 border-primary/20 p-4">
-          <div className="flex justify-between items-start mb-3">
-            <div>
-              <h3 className="font-semibold text-foreground">
-                {new Date(selectedDateDetail.date).toLocaleDateString('en-US', {
-                  weekday: 'long',
-                  month: 'short',
-                  day: 'numeric',
-                  year: 'numeric'
-                })}
-              </h3>
-              <p className="text-sm text-muted-foreground">Form submission window</p>
-            </div>
-            <button
-              onClick={() => setSelectedDateDetail(null)}
-              className="text-muted-foreground hover:text-foreground text-xl"
-              type="button"
-            >
-              ×
-            </button>
+                <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0 group-hover:bg-primary/20 transition-colors">
+                  <Download className="w-6 h-6 text-primary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-muted-foreground font-semibold tracking-wider uppercase mb-1">{form.code}</p>
+                  <p className="font-semibold text-sm text-foreground">{form.label}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{form.description}</p>
+                  <p className="text-xs text-primary font-semibold mt-2">Download here →</p>
+                </div>
+              </a>
+            ))}
           </div>
-          <div className="flex items-center gap-2 text-sm text-foreground bg-success/5 rounded-lg p-3">
-            <Clock className="w-4 h-4 text-success flex-shrink-0" />
-            <div>
-              <p className="font-medium">Available</p>
-              <p className="text-xs text-muted-foreground">
-                {selectedDateDetail.start_time || 'All day'} - {selectedDateDetail.end_time || 'All day'}
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Download Forms Section */}
-      <div>
-        <h2 className="font-heading text-lg font-bold text-foreground mb-4">Downloadable Forms</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {downloadForms.map((form) => (
-            <a 
-              key={form.code} 
-              href={form.file} 
-              download
-              className="bg-card rounded-xl border-2 border-border p-5 flex items-start gap-4 no-underline hover:border-primary hover:shadow-md transition-all group"
-            >
-              <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0 group-hover:bg-primary/20 transition-colors">
-                <Download className="w-6 h-6 text-primary" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs text-muted-foreground font-semibold tracking-wider uppercase mb-1">{form.code}</p>
-                <p className="font-semibold text-sm text-foreground">{form.label}</p>
-                <p className="text-xs text-muted-foreground mt-1">{form.description}</p>
-                <p className="text-xs text-primary font-semibold mt-2">Download here →</p>
-              </div>
-            </a>
-          ))}
         </div>
       </div>
 

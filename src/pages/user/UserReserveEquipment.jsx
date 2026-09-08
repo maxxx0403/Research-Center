@@ -30,14 +30,15 @@ const validateDateTime = (start, end) => {
 const inputClass =
   'w-full px-4 py-3 border-2 border-border rounded-xl text-base bg-card text-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10';
 
+const emptyItem = (equipmentId = 0) => ({ equipmentId, quantity: 1 });
+
 const UserReserveEquipment = () => {
   const { user } = useAuth();
   const [searchParams] = useSearchParams();
   const preId = Number(searchParams.get('equipment_id') || 0);
 
   const [equipment, setEquipment] = useState([]);
-  const [selectedId, setSelectedId] = useState(preId);
-  const [quantity, setQuantity] = useState(1);
+  const [items, setItems] = useState([emptyItem(preId)]);
   const [startDatetime, setStartDatetime] = useState('');
   const [endDatetime, setEndDatetime] = useState('');
   const [stakeholderType, setStakeholderType] = useState('');
@@ -45,7 +46,7 @@ const UserReserveEquipment = () => {
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [reservationId, setReservationId] = useState(0);
+  const [reservationIds, setReservationIds] = useState([]);
 
   const [tempId] = useState(() => `EQ-TMP-${Math.floor(100000 + Math.random() * 900000)}`);
 
@@ -64,8 +65,6 @@ const UserReserveEquipment = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const selected = equipment.find((e) => e.id === selectedId);
-
   const addMember = () => setMembers([...members, { name: '' }]);
   const removeMember = (idx) => setMembers(members.filter((_, i) => i !== idx));
   const updateMember = (idx, value) => {
@@ -73,6 +72,24 @@ const UserReserveEquipment = () => {
     updated[idx] = { name: value };
     setMembers(updated);
   };
+
+  // ---- Multiple equipment items -----------------------------------------
+  const addItem = () => setItems([...items, emptyItem()]);
+  const removeItem = (idx) => setItems(items.filter((_, i) => i !== idx));
+  const updateItemEquipment = (idx, equipmentId) => {
+    const updated = [...items];
+    updated[idx] = { ...updated[idx], equipmentId };
+    setItems(updated);
+  };
+  const updateItemQuantity = (idx, quantity) => {
+    const updated = [...items];
+    updated[idx] = { ...updated[idx], quantity: Math.max(1, Number(quantity) || 1) };
+    setItems(updated);
+  };
+  // An equipment already picked in one row shouldn't be selectable again in another.
+  const equipmentIdsInUse = items.map((it) => it.equipmentId).filter(Boolean);
+  const equipmentOptionsFor = (idx) =>
+    equipment.filter((eq) => eq.id === items[idx].equipmentId || !equipmentIdsInUse.includes(eq.id));
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -93,15 +110,24 @@ const UserReserveEquipment = () => {
       return;
     }
 
-    if (!selectedId) {
-      triggerError('Please select an equipment.');
+    if (!items.length || items.some((it) => !it.equipmentId)) {
+      triggerError('Please select an equipment for every row (or remove the empty row).');
       return;
     }
 
-    const selectedEquipment = equipment.find((e) => e.id === selectedId);
-    if (selectedEquipment?.status === 'maintenance') {
-      triggerError(`"${selectedEquipment.name}" is currently under maintenance and cannot be reserved.`);
+    const equipmentIds = items.map((it) => it.equipmentId);
+    const hasDuplicates = new Set(equipmentIds).size !== equipmentIds.length;
+    if (hasDuplicates) {
+      triggerError('Each equipment can only be added once — adjust the quantity instead of adding it twice.');
       return;
+    }
+
+    for (const it of items) {
+      const eq = equipment.find((e) => e.id === it.equipmentId);
+      if (eq?.status === 'maintenance') {
+        triggerError(`"${eq.name}" is currently under maintenance and cannot be reserved.`);
+        return;
+      }
     }
 
     const dtError = validateDateTime(startDatetime, endDatetime);
@@ -128,32 +154,40 @@ const UserReserveEquipment = () => {
       return;
     }
 
+    const batchId = items.length > 1 && crypto?.randomUUID ? crypto.randomUUID() : null;
+
+    const sharedFields = {
+      user_id: user.id,
+      researcher_name: sanitizeText(rawFields.researcher_name, { maxLength: 150 }),
+      email: rawFields.email.trim(),
+      phone: rawFields.phone ? rawFields.phone.trim() : null,
+      purpose: sanitizeText(rawFields.research_purpose, { maxLength: 1000 }),
+      start_datetime: startDatetime,
+      end_datetime: endDatetime,
+      special_requirements: sanitizeText(form.get('special_requirements'), { maxLength: 500 }),
+      adviser_name: sanitizeText(adviserName, { maxLength: 150 }),
+      study_title: sanitizeText(rawFields.study_title, { maxLength: 300 }),
+      unit_college: sanitizeText(form.get('unit_college'), { maxLength: 150 }),
+      stakeholder_type: stakeholderType,
+      status: 'pending',
+      batch_id: batchId,
+    };
+
+    const rows = items.map((it) => ({
+      ...sharedFields,
+      equipment_id: it.equipmentId,
+      quantity_reserved: it.quantity,
+    }));
+
     const { data, error: err } = await supabase
       .from('equipment_reservations')
-      .insert({
-        user_id: user.id,
-        equipment_id: selectedId,
-        researcher_name: sanitizeText(rawFields.researcher_name, { maxLength: 150 }),
-        email: rawFields.email.trim(),
-        phone: rawFields.phone ? rawFields.phone.trim() : null,
-        purpose: sanitizeText(rawFields.research_purpose, { maxLength: 1000 }),
-        quantity_reserved: quantity,
-        start_datetime: startDatetime,
-        end_datetime: endDatetime,
-        special_requirements: sanitizeText(form.get('special_requirements'), { maxLength: 500 }),
-        adviser_name: sanitizeText(adviserName, { maxLength: 150 }),
-        study_title: sanitizeText(rawFields.study_title, { maxLength: 300 }),
-        unit_college: sanitizeText(form.get('unit_college'), { maxLength: 150 }),
-        stakeholder_type: stakeholderType,
-        status: 'pending',
-      })
-      .select('id')
-      .single();
+      .insert(rows)
+      .select('id');
 
     if (err) {
       triggerError(err.message);
     } else {
-      setReservationId(data.id);
+      setReservationIds((data || []).map((r) => r.id));
       setSuccess(true);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
@@ -162,9 +196,8 @@ const UserReserveEquipment = () => {
 
   const resetForm = () => {
     setSuccess(false);
-    setReservationId(0);
-    setSelectedId(0);
-    setQuantity(1);
+    setReservationIds([]);
+    setItems([emptyItem()]);
     setStartDatetime('');
     setEndDatetime('');
     setStakeholderType('');
@@ -190,7 +223,18 @@ const UserReserveEquipment = () => {
             Thank you for inquiring, please wait while the administrators review your request.
           </p>
           <p className="text-xs text-muted-foreground mb-8">
-            Reference: <strong>#EQ{String(reservationId).padStart(5, '0')}</strong>
+            {reservationIds.length > 1 ? (
+              <>
+                References:{' '}
+                <strong>
+                  {reservationIds.map((id) => `#EQ${String(id).padStart(5, '0')}`).join(', ')}
+                </strong>
+              </>
+            ) : (
+              <>
+                Reference: <strong>#EQ{String(reservationIds[0] || 0).padStart(5, '0')}</strong>
+              </>
+            )}
           </p>
           <div className="flex gap-4 justify-center flex-wrap">
             <Link
@@ -252,7 +296,7 @@ const UserReserveEquipment = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className="block mb-1.5 font-semibold text-sm text-foreground">
-                Name(s) <span className="text-destructive">*</span>
+                Full Name <span className="text-destructive">*</span>
               </label>
               <input
                 name="researcher_name"
@@ -353,9 +397,9 @@ const UserReserveEquipment = () => {
 
           <div className="mb-6">
             <label className="block mb-1.5 font-semibold text-sm text-foreground">
-              Title of the Study
+              Title of the Study <span className="text-destructive">*</span>
             </label>
-            <input name="study_title" className={inputClass} />
+            <input name="study_title" className={inputClass} required />
           </div>
 
           <div className="mb-6">
@@ -414,68 +458,95 @@ const UserReserveEquipment = () => {
           </div>
 
           <div className="rounded-2xl border-2 border-primary/30 bg-primary/5 p-5 space-y-4">
-            <div className="flex gap-2 items-center">
-              <span className="text-xs font-bold px-2.5 py-1 rounded-full text-primary bg-primary/15 whitespace-nowrap">
-                Equipment
-              </span>
-              <select
-                value={selectedId}
-                onChange={(e) => setSelectedId(Number(e.target.value))}
-                className={inputClass + ' flex-1'}
-                required
+            <div className="flex items-center justify-between">
+              <label className="font-semibold text-sm text-foreground flex items-center gap-1.5">
+                <Package className="w-4 h-4 text-primary" />
+                Equipment to Reserve <span className="text-destructive">*</span>
+              </label>
+              <button
+                type="button"
+                onClick={addItem}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border-2 border-primary/30 text-primary text-xs font-semibold hover:border-primary hover:bg-primary/5 transition-all cursor-pointer"
               >
-                <option value={0}>Select equipment…</option>
-                {equipment.map((eq) => (
-                  <option key={eq.id} value={eq.id} disabled={eq.status === 'maintenance'}>
-                    {eq.name} — {eq.laboratories?.lab_name} ({eq.laboratories?.lab_code}){eq.status === 'maintenance' ? ' — Under Maintenance' : ''}
-                  </option>
-                ))}
-              </select>
+                <Plus className="w-3.5 h-3.5" /> Add Equipment
+              </button>
             </div>
 
-            {selected && (
-              <div className={`border rounded-xl p-4 text-sm flex items-start gap-3 ${selected.status === 'maintenance' ? 'bg-destructive/5 border-destructive/25' : 'bg-card border-primary/15'}`}>
-                <Info className={`w-5 h-5 flex-shrink-0 mt-0.5 ${selected.status === 'maintenance' ? 'text-destructive' : 'text-primary'}`} />
-                <div>
-                  <p className={`font-semibold mb-1 ${selected.status === 'maintenance' ? 'text-destructive' : 'text-primary'}`}>
-                    {selected.name}
-                    {selected.status === 'maintenance' && (
-                      <span className="ml-2 text-xs font-bold bg-destructive/15 text-destructive px-2 py-0.5 rounded-full">Under Maintenance</span>
-                    )}
-                  </p>
-                  {selected.status === 'maintenance' ? (
-                    <p className="text-destructive/80 text-xs">This equipment is currently under maintenance and cannot be reserved.</p>
-                  ) : (
-                    <>
-                      {selected.brand && (
-                        <p className="text-muted-foreground mb-1">
-                          {selected.brand}{selected.model ? ` · ${selected.model}` : ''}
-                        </p>
+            <div className="space-y-3">
+              {items.map((item, idx) => {
+                const eq = equipment.find((e) => e.id === item.equipmentId);
+                return (
+                  <div key={idx} className="rounded-xl border border-primary/15 bg-card p-4 space-y-3">
+                    <div className="flex gap-2 items-start">
+                      <select
+                        value={item.equipmentId}
+                        onChange={(ev) => updateItemEquipment(idx, Number(ev.target.value))}
+                        className={inputClass + ' flex-1'}
+                        required
+                      >
+                        <option value={0}>Select equipment…</option>
+                        {equipmentOptionsFor(idx).map((option) => (
+                          <option key={option.id} value={option.id} disabled={option.status === 'maintenance'}>
+                            {option.name} — {option.laboratories?.lab_name} ({option.laboratories?.lab_code}){option.status === 'maintenance' ? ' — Under Maintenance' : ''}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="w-28">
+                        <input
+                          type="number"
+                          min={1}
+                          value={item.quantity}
+                          onChange={(ev) => updateItemQuantity(idx, ev.target.value)}
+                          required
+                          placeholder="Qty"
+                          className={inputClass}
+                        />
+                      </div>
+                      {items.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removeItem(idx)}
+                          className="p-3 hover:bg-destructive/10 text-destructive rounded-xl transition-colors cursor-pointer flex-shrink-0"
+                          title="Remove this equipment"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
                       )}
-                      <p className="text-muted-foreground">
-                        <strong>Location:</strong> {selected.laboratories?.lab_name} ({selected.laboratories?.lab_code})
-                      </p>
-                      {selected.description && (
-                        <p className="text-muted-foreground mt-1">{selected.description}</p>
-                      )}
-                    </>
-                  )}
-                </div>
-              </div>
-            )}
+                    </div>
 
-            <div className="max-w-[180px]">
-              <label className="block mb-1.5 font-semibold text-xs text-muted-foreground uppercase tracking-wider">
-                Quantity <span className="text-destructive">*</span>
-              </label>
-              <input
-                type="number"
-                min={1}
-                value={quantity}
-                onChange={(e) => setQuantity(Math.max(1, Number(e.target.value)))}
-                required
-                className={inputClass}
-              />
+                    {eq && (
+                      <div className={`border rounded-xl p-4 text-sm flex items-start gap-3 ${eq.status === 'maintenance' ? 'bg-destructive/5 border-destructive/25' : 'bg-primary/5 border-primary/15'}`}>
+                        <Info className={`w-5 h-5 flex-shrink-0 mt-0.5 ${eq.status === 'maintenance' ? 'text-destructive' : 'text-primary'}`} />
+                        <div>
+                          <p className={`font-semibold mb-1 ${eq.status === 'maintenance' ? 'text-destructive' : 'text-primary'}`}>
+                            {eq.name}
+                            {eq.status === 'maintenance' && (
+                              <span className="ml-2 text-xs font-bold bg-destructive/15 text-destructive px-2 py-0.5 rounded-full">Under Maintenance</span>
+                            )}
+                          </p>
+                          {eq.status === 'maintenance' ? (
+                            <p className="text-destructive/80 text-xs">This equipment is currently under maintenance and cannot be reserved.</p>
+                          ) : (
+                            <>
+                              {eq.brand && (
+                                <p className="text-muted-foreground mb-1">
+                                  {eq.brand}{eq.model ? ` · ${eq.model}` : ''}
+                                </p>
+                              )}
+                              <p className="text-muted-foreground">
+                                <strong>Location:</strong> {eq.laboratories?.lab_name} ({eq.laboratories?.lab_code})
+                              </p>
+                              {eq.description && (
+                                <p className="text-muted-foreground mt-1">{eq.description}</p>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
 
             <div>

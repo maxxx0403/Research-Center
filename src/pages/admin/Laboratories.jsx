@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, X, Pencil, Trash2, Search } from 'lucide-react';
+import { Plus, X, Pencil, Trash2, Search, Minus, UserPlus } from 'lucide-react';
 import StatusBadge from '@/components/StatusBadge';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -88,6 +88,26 @@ const Laboratories = () => {
     setDeleteTarget(null);
   };
 
+  // Manually adjust how many people are currently inside a lab. The room's
+  // status follows this count: it becomes "occupied" as soon as someone's
+  // inside, and back to "available" once it's empty. A room under
+  // maintenance keeps that status regardless of occupancy.
+  const adjustOccupancy = async (lab, delta) => {
+    const current = lab.current_occupancy ?? 0;
+    const max = lab.max_capacity || 0;
+    const next = Math.max(0, max > 0 ? Math.min(max, current + delta) : current + delta);
+    if (next === current) return;
+
+    const updates = { current_occupancy: next };
+    if (lab.status !== 'maintenance') {
+      updates.status = next > 0 ? 'occupied' : 'available';
+    }
+
+    const { error } = await supabase.from('laboratories').update(updates).eq('id', lab.id);
+    if (error) { toast.error('Failed to update occupancy: ' + error.message); return; }
+    setLabs((prev) => prev.map((l) => l.id === lab.id ? { ...l, ...updates } : l));
+  };
+
   return (
     <>
       {/* Search + Add */}
@@ -145,10 +165,32 @@ const Laboratories = () => {
               <div className="p-5 space-y-4">
                 <p className="text-xs text-muted-foreground leading-relaxed">{lab.description}</p>
                 <div>
-                  <div className="flex justify-between text-xs font-semibold text-muted-foreground mb-1">
-                    <span>Occupancy</span><span>{lab.current_occupancy ?? 0} / {lab.max_capacity ?? 0} ({pct}%)</span>
+                  <div className="flex justify-between items-center text-xs font-semibold text-muted-foreground mb-1">
+                    <span className="inline-flex items-center gap-1"><UserPlus className="w-3.5 h-3.5" /> Occupancy</span>
+                    <span>{lab.current_occupancy ?? 0} / {lab.max_capacity ?? 0} ({pct}%)</span>
                   </div>
-                  <div className="h-2 bg-muted rounded-full overflow-hidden"><div className={`h-full ${barColor} rounded-full transition-all`} style={{ width: `${Math.min(pct, 100)}%` }} /></div>
+                  <div className="h-2 bg-muted rounded-full overflow-hidden mb-2"><div className={`h-full ${barColor} rounded-full transition-all`} style={{ width: `${Math.min(pct, 100)}%` }} /></div>
+                  <div className="flex items-center justify-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => adjustOccupancy(lab, -1)}
+                      disabled={(lab.current_occupancy ?? 0) <= 0}
+                      className="p-1.5 rounded-lg bg-muted hover:bg-muted/80 text-foreground disabled:opacity-40 disabled:cursor-not-allowed border-none cursor-pointer transition-colors"
+                      title="Remove one person"
+                    >
+                      <Minus className="w-3.5 h-3.5" />
+                    </button>
+                    <span className="text-xs text-muted-foreground w-28 text-center">people inside</span>
+                    <button
+                      type="button"
+                      onClick={() => adjustOccupancy(lab, 1)}
+                      disabled={lab.max_capacity ? (lab.current_occupancy ?? 0) >= lab.max_capacity : false}
+                      className="p-1.5 rounded-lg bg-muted hover:bg-muted/80 text-foreground disabled:opacity-40 disabled:cursor-not-allowed border-none cursor-pointer transition-colors"
+                      title="Add one person"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
                 {lab.equipment_list && (
                   <div className="text-xs text-muted-foreground"><strong className="text-foreground">Equipment:</strong> {lab.equipment_list}</div>
@@ -166,7 +208,7 @@ const Laboratories = () => {
                       }}
                       className={`flex-1 text-xs font-semibold py-1.5 rounded-lg transition-colors ${lab.status === s ? 'bg-primary/20 text-primary cursor-default' : 'bg-muted hover:bg-muted/80 text-muted-foreground'}`}
                     >
-                      {s.charAt(0).toUpperCase() + s.slice(1)}
+                      {s === 'maintenance' ? 'Under Maintenance' : s.charAt(0).toUpperCase() + s.slice(1)}
                     </button>
                   )}
                 </div>
@@ -212,7 +254,7 @@ const Laboratories = () => {
                   <label className="block text-xs font-semibold text-foreground mb-1">Status</label>
                   <select name="status" value={form.status} onChange={handleChange} className={inputCls}>
                     <option value="available">Available</option>
-                    <option value="maintenance">Maintenance</option>
+                    <option value="maintenance">Under Maintenance</option>
                   </select>
                 </div>
               </div>

@@ -57,7 +57,7 @@ const UserReserve = () => {
 
   useEffect(() => {
     Promise.all([
-      supabase.from('laboratories').select('*').in('status', ['available', 'maintenance']).order('id'),
+      supabase.from('laboratories').select('*').in('status', ['available', 'occupied', 'maintenance']).order('id'),
       supabase
         .from('equipment')
         .select('*, laboratories(lab_name, lab_code)')
@@ -390,7 +390,7 @@ const UserReserve = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className="block mb-1.5 font-semibold text-sm text-foreground">
-                Name(s) <span className="text-destructive">*</span>
+                Full Name <span className="text-destructive">*</span>
               </label>
               <input
                 name="researcher_name"
@@ -491,9 +491,9 @@ const UserReserve = () => {
 
           <div className="mb-6">
             <label className="block mb-1.5 font-semibold text-sm text-foreground">
-              Title of the Study
+              Title of the Study <span className="text-destructive">*</span>
             </label>
-            <input name="study_title" className={inputClass} />
+            <input name="study_title" className={inputClass} required />
           </div>
 
           <div className="mb-6">

@@ -63,11 +63,20 @@ export const ReservationCalendarView = ({ labId = null }) => {
       const monthStartKey = toDateKey(year, month, 1);
       const monthEndKey = toDateKey(year, month, new Date(year, month + 1, 0).getDate());
 
-      const { data: rows, error } = await supabase
+      let query = supabase
         .from('staff_unavailability')
-        .select('*')
+        .select('*, laboratories(lab_name, lab_code)')
         .gte('unavailable_date', monthStartKey)
         .lte('unavailable_date', monthEndKey);
+
+      // When viewing a specific room's calendar, only show unavailability
+      // that applies to that room: rows with no room set (whole-day, all
+      // rooms) plus rows explicitly scoped to this labId.
+      if (labId) {
+        query = query.or(`laboratory_id.is.null,laboratory_id.eq.${labId}`);
+      }
+
+      const { data: rows, error } = await query;
       if (error) throw error;
 
       const grouped = {};
@@ -76,6 +85,7 @@ export const ReservationCalendarView = ({ labId = null }) => {
         grouped[r.unavailable_date].push({
           name: r.staff_name || 'A staff member',
           reason: r.reason,
+          roomLabel: r.laboratories ? `${r.laboratories.lab_name} (${r.laboratories.lab_code})` : 'All rooms',
         });
       });
       setStaffUnavailability(grouped);
@@ -151,7 +161,7 @@ export const ReservationCalendarView = ({ labId = null }) => {
         </div>
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <UserX className="w-3.5 h-3.5 text-amber-600" />
-          Staff unavailable
+          Room unavailable
         </div>
       </div>
 
@@ -178,7 +188,7 @@ export const ReservationCalendarView = ({ labId = null }) => {
             <div
               key={idx}
               onClick={() => { if (!day || closed) return; setSelectedDate(selectedDate === day ? null : day); }}
-              title={unavailableStaff.length > 0 ? `Unavailable: ${unavailableStaff.map((s) => s.name).join(', ')}` : undefined}
+              title={unavailableStaff.length > 0 ? `Unavailable: ${unavailableStaff.map((s) => `${s.name} (${s.roomLabel})`).join(', ')}` : undefined}
               className={`min-h-[60px] sm:min-h-[80px] md:min-h-[100px] p-1.5 sm:p-2 rounded-lg border-2 transition-colors
                 ${!day ? 'bg-muted/20 border-transparent' : ''}
                 ${closed ? 'bg-destructive/5 border-destructive/20 cursor-not-allowed' : isToday ? 'border-primary bg-primary/5 cursor-pointer' : isSelected ? 'bg-primary/10 border-primary cursor-pointer' : day ? 'border-border hover:border-primary/50 hover:bg-primary/5 cursor-pointer' : ''}
@@ -208,7 +218,9 @@ export const ReservationCalendarView = ({ labId = null }) => {
                       )}
                       {unavailableStaff.length > 0 && (
                         <div className="text-[10px] text-amber-700 px-1 truncate">
-                          {unavailableStaff.length === 1 ? unavailableStaff[0].name : `${unavailableStaff.length} staff unavailable`}
+                          {unavailableStaff.length === 1
+                            ? `${unavailableStaff[0].roomLabel} unavailable`
+                            : `${unavailableStaff.length} rooms unavailable`}
                         </div>
                       )}
                     </div>
@@ -229,12 +241,12 @@ export const ReservationCalendarView = ({ labId = null }) => {
           {getUnavailableStaffForDate(selectedDate).length > 0 && (
             <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3">
               <p className="text-xs font-bold text-amber-800 uppercase tracking-wide mb-1.5 flex items-center gap-1.5">
-                <UserX className="w-3.5 h-3.5" /> Staff unavailable this day
+                <UserX className="w-3.5 h-3.5" /> Room unavailable this day
               </p>
               <ul className="space-y-0.5">
                 {getUnavailableStaffForDate(selectedDate).map((s, i) => (
                   <li key={i} className="text-sm text-amber-900">
-                    {s.name}
+                    {s.name} <span className="text-amber-700 font-medium">· {s.roomLabel}</span>
                     {s.reason && <span className="text-amber-700"> — {s.reason}</span>}
                   </li>
                 ))}
