@@ -53,7 +53,7 @@ const UserReserve = () => {
   const [loading, setLoading] = useState(false);
   const [reservationId, setReservationId] = useState(0);
   const [stakeholderType, setStakeholderType] = useState('');
-  const [members, setMembers] = useState([{ name: '' }]);
+  const [members, setMembers] = useState([{ name: '', studentNumber: '' }]);
 
   useEffect(() => {
     Promise.all([
@@ -91,7 +91,18 @@ const UserReserve = () => {
 
   const addEquipment = (eqId) => {
     if (!selectedEquipments.find((e) => e.equipmentId === eqId)) {
-      setSelectedEquipments([...selectedEquipments, { equipmentId: eqId, quantity: 1, labIdx: 0 }]);
+      const eqData = equipment.find((e) => e.id === eqId);
+      const labsNow = selectedLabs.filter((l) => l.labId > 0);
+      // If this equipment belongs to a specific lab that's already part of
+      // the reservation, auto-align it to that lab instead of defaulting to
+      // the first row.
+      const matchIdx = eqData?.laboratory_id
+        ? labsNow.findIndex((l) => l.labId === eqData.laboratory_id)
+        : -1;
+      setSelectedEquipments([
+        ...selectedEquipments,
+        { equipmentId: eqId, quantity: 1, labIdx: matchIdx !== -1 ? matchIdx : 0 },
+      ]);
     }
   };
 
@@ -115,11 +126,11 @@ const UserReserve = () => {
     );
   };
 
-  const addMember = () => setMembers([...members, { name: '' }]);
+  const addMember = () => setMembers([...members, { name: '', studentNumber: '' }]);
   const removeMember = (idx) => setMembers(members.filter((_, i) => i !== idx));
-  const updateMember = (idx, value) => {
+  const updateMember = (idx, field, value) => {
     const updated = [...members];
-    updated[idx] = { name: value };
+    updated[idx] = { ...updated[idx], [field]: value };
     setMembers(updated);
   };
 
@@ -145,6 +156,20 @@ const UserReserve = () => {
     if (!stakeholderType) {
       triggerError('Please select a Stakeholder Type.');
       return;
+    }
+
+    for (let i = 0; i < members.length; i++) {
+      const m = members[i];
+      const hasName = m.name && m.name.trim();
+      const hasSN = m.studentNumber && m.studentNumber.trim();
+      if (hasName && !hasSN) {
+        triggerError(`Please provide the Student Number for "${m.name.trim()}" in the members list.`);
+        return;
+      }
+      if (hasSN && !hasName) {
+        triggerError(`Please provide the full name for the member with Student Number "${m.studentNumber.trim()}".`);
+        return;
+      }
     }
 
     if (!selectedLabs[0]?.labId || selectedLabs[0].labId === 0) {
@@ -240,34 +265,43 @@ const UserReserve = () => {
       study_title: sanitizeText(rawFields.study_title, { maxLength: 300 }),
       special_requirements: sanitizeText(form.get('special_requirements'), { maxLength: 500 }),
       research_purpose: sanitizeText(rawFields.research_purpose, { maxLength: 1000 }),
-      members_list: members.map((m) => sanitizeText(m.name, { maxLength: 150 })).filter(Boolean),
+      members_list: members
+        .filter((m) => m.name && m.name.trim())
+        .map((m) => `${sanitizeText(m.name, { maxLength: 150 })} — Student No. ${sanitizeText(m.studentNumber, { maxLength: 50 })}`),
       status: 'pending',
     };
 
-    let lastId = 0;
-    const labReservationIds = {};
+    // When the request covers more than one laboratory, tag every row with
+    // the same batch_id so the whole submission is treated as a single
+    // reservation (one reference/one row) across the admin, staff, and
+    // "My Reservations" views instead of showing up as N separate entries.
+    const batchId = validLabs.length > 1 && crypto?.randomUUID ? crypto.randomUUID() : null;
 
-    for (let i = 0; i < validLabs.length; i++) {
-      const entry = validLabs[i];
-      const { data, error: err } = await supabase
-        .from('reservations')
-        .insert({
-          ...commonFields,
-          laboratory_id: entry.labId,
-          start_datetime: entry.startDatetime,
-          end_datetime: entry.endDatetime,
-        })
-        .select('id')
-        .single();
+    const labRows = validLabs.map((entry) => ({
+      ...commonFields,
+      laboratory_id: entry.labId,
+      start_datetime: entry.startDatetime,
+      end_datetime: entry.endDatetime,
+      batch_id: batchId,
+    }));
 
-      if (err) {
-        triggerError(err.message);
-        return;
-      }
+    const { data: insertedLabs, error: labInsertErr } = await supabase
+      .from('reservations')
+      .insert(labRows)
+      .select('id');
 
-      labReservationIds[i] = data.id;
-      lastId = data.id;
+    if (labInsertErr) {
+      triggerError(labInsertErr.message);
+      return;
     }
+
+    const labReservationIds = {};
+    insertedLabs.forEach((row, i) => {
+      labReservationIds[i] = row.id;
+    });
+    // The batch's reference ID is its lowest row ID, matching the
+    // convention already used for equipment batches.
+    const lastId = Math.min(...insertedLabs.map((r) => r.id));
 
     for (const eq of selectedEquipments) {
       const labIdx = eq.labIdx ?? 0;
@@ -293,6 +327,36 @@ const UserReserve = () => {
   };
 
   const validLabs = selectedLabs.filter((e) => e.labId > 0);
+  const validLabIds = validLabs.map((e) => e.labId);
+
+  // Equipment is physically located in a specific lab, so only offer
+  // equipment that belongs to one of the labs currently being reserved
+  // (or equipment with no fixed lab, which anyone can request).
+  const eligibleEquipment = equipment.filter(
+    (eq) => !eq.laboratory_id || validLabIds.includes(eq.laboratory_id)
+  );
+
+  // If the set of selected labs changes (a lab is swapped or removed), drop
+  // any already-selected equipment that's no longer aligned with a chosen
+  // lab, and re-point equipment tied to a specific lab at that lab's row.
+  useEffect(() => {
+    setSelectedEquipments((prev) =>
+      prev
+        .filter((se) => {
+          const eqData = equipment.find((e) => e.id === se.equipmentId);
+          return !eqData?.laboratory_id || validLabIds.includes(eqData.laboratory_id);
+        })
+        .map((se) => {
+          const eqData = equipment.find((e) => e.id === se.equipmentId);
+          if (eqData?.laboratory_id) {
+            const matchIdx = validLabs.findIndex((l) => l.labId === eqData.laboratory_id);
+            if (matchIdx !== -1 && matchIdx !== se.labIdx) return { ...se, labIdx: matchIdx };
+          }
+          return se;
+        })
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(validLabIds), equipment.length]);
 
   const resetForm = () => {
     setSuccess(false);
@@ -517,6 +581,7 @@ const UserReserve = () => {
                   <tr className="bg-muted/60 border-b-2 border-border">
                     <th className="px-4 py-2.5 text-left text-xs font-bold text-muted-foreground uppercase w-12">#</th>
                     <th className="px-4 py-2.5 text-left text-xs font-bold text-muted-foreground uppercase">Full Name</th>
+                    <th className="px-4 py-2.5 text-left text-xs font-bold text-muted-foreground uppercase">Student Number</th>
                     <th className="px-4 py-2.5 w-10"></th>
                   </tr>
                 </thead>
@@ -528,8 +593,17 @@ const UserReserve = () => {
                         <input
                           type="text"
                           value={member.name}
-                          onChange={(e) => updateMember(idx, e.target.value)}
+                          onChange={(e) => updateMember(idx, 'name', e.target.value)}
                           placeholder="Enter full name…"
+                          className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-card text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/10"
+                        />
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <input
+                          type="text"
+                          value={member.studentNumber}
+                          onChange={(e) => updateMember(idx, 'studentNumber', e.target.value)}
+                          placeholder="Enter student number…"
                           className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-card text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/10"
                         />
                       </td>
@@ -691,25 +765,31 @@ const UserReserve = () => {
               Optionally include specific equipment alongside your laboratory reservation.
             </p>
 
-            <select
-              value={0}
-              onChange={(e) => {
-                if (Number(e.target.value) > 0) {
-                  addEquipment(Number(e.target.value));
-                  e.target.value = '0';
-                }
-              }}
-              className={inputClass}
-            >
-              <option value={0}>Select equipment to add…</option>
-              {equipment
-                .filter((eq) => !selectedEquipments.find((se) => se.equipmentId === eq.id))
-                .map((eq) => (
-                  <option key={eq.id} value={eq.id} disabled={eq.status === 'maintenance'}>
-                    {eq.name} — {eq.laboratories?.lab_name}{eq.status === 'maintenance' ? ' (Under Maintenance)' : ''}
-                  </option>
-                ))}
-            </select>
+            {validLabs.length === 0 ? (
+              <p className="text-xs text-warning bg-warning/10 border border-warning/25 rounded-lg px-3 py-2">
+                Select at least one laboratory above first — only equipment available in your chosen lab(s) will be shown here.
+              </p>
+            ) : (
+              <select
+                value={0}
+                onChange={(e) => {
+                  if (Number(e.target.value) > 0) {
+                    addEquipment(Number(e.target.value));
+                    e.target.value = '0';
+                  }
+                }}
+                className={inputClass}
+              >
+                <option value={0}>Select equipment to add…</option>
+                {eligibleEquipment
+                  .filter((eq) => !selectedEquipments.find((se) => se.equipmentId === eq.id))
+                  .map((eq) => (
+                    <option key={eq.id} value={eq.id} disabled={eq.status === 'maintenance'}>
+                      {eq.name} — {eq.laboratories?.lab_name || 'Any lab'}{eq.status === 'maintenance' ? ' (Under Maintenance)' : ''}
+                    </option>
+                  ))}
+              </select>
+            )}
 
             {selectedEquipments.length > 0 && (
               <div className="space-y-2 mt-3">
@@ -758,23 +838,30 @@ const UserReserve = () => {
                             <FlaskConical className="w-3.5 h-3.5 text-primary" /> Used in which lab?
                             <span className="text-destructive">*</span>
                           </label>
-                          <select
-                            value={eq.labIdx}
-                            onChange={(e) => updateEquipmentLabIdx(eq.equipmentId, Number(e.target.value))}
-                            className="w-full px-3 py-2 border-2 border-border rounded-xl text-sm bg-card text-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10"
-                            required
-                          >
-                            {validLabs.length === 0 && <option value={0}>Select a lab first…</option>}
-                            {validLabs.map((entry, idx) => {
-                              const lab = labs.find((l) => l.id === entry.labId);
-                              return (
-                                <option key={idx} value={idx}>
-                                  {lab?.lab_name || `Lab #${idx + 1}`}
-                                  {entry.startDatetime ? ` — ${new Date(entry.startDatetime).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} ${new Date(entry.startDatetime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}` : ''}
-                                </option>
-                              );
-                            })}
-                          </select>
+                          {eqData?.laboratory_id ? (
+                            <div className="w-full px-3 py-2 border-2 border-border rounded-xl text-sm bg-muted/40 text-foreground">
+                              {eqData.laboratories?.lab_name || `Lab #${eqData.laboratory_id}`}
+                              <span className="text-xs text-muted-foreground"> (fixed — this equipment belongs to this lab)</span>
+                            </div>
+                          ) : (
+                            <select
+                              value={eq.labIdx}
+                              onChange={(e) => updateEquipmentLabIdx(eq.equipmentId, Number(e.target.value))}
+                              className="w-full px-3 py-2 border-2 border-border rounded-xl text-sm bg-card text-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10"
+                              required
+                            >
+                              {validLabs.length === 0 && <option value={0}>Select a lab first…</option>}
+                              {validLabs.map((entry, idx) => {
+                                const lab = labs.find((l) => l.id === entry.labId);
+                                return (
+                                  <option key={idx} value={idx}>
+                                    {lab?.lab_name || `Lab #${idx + 1}`}
+                                    {entry.startDatetime ? ` — ${new Date(entry.startDatetime).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} ${new Date(entry.startDatetime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}` : ''}
+                                  </option>
+                                );
+                              })}
+                            </select>
+                          )}
                           {(() => {
                             const assignedLab = validLabs[eq.labIdx];
                             if (!assignedLab) return null;

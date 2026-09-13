@@ -42,7 +42,7 @@ const UserReserveEquipment = () => {
   const [startDatetime, setStartDatetime] = useState('');
   const [endDatetime, setEndDatetime] = useState('');
   const [stakeholderType, setStakeholderType] = useState('');
-  const [members, setMembers] = useState([{ name: '' }]);
+  const [members, setMembers] = useState([{ name: '', studentNumber: '' }]);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -65,11 +65,11 @@ const UserReserveEquipment = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const addMember = () => setMembers([...members, { name: '' }]);
+  const addMember = () => setMembers([...members, { name: '', studentNumber: '' }]);
   const removeMember = (idx) => setMembers(members.filter((_, i) => i !== idx));
-  const updateMember = (idx, value) => {
+  const updateMember = (idx, field, value) => {
     const updated = [...members];
-    updated[idx] = { name: value };
+    updated[idx] = { ...updated[idx], [field]: value };
     setMembers(updated);
   };
 
@@ -141,6 +141,20 @@ const UserReserveEquipment = () => {
       return;
     }
 
+    for (let i = 0; i < members.length; i++) {
+      const m = members[i];
+      const hasName = m.name && m.name.trim();
+      const hasSN = m.studentNumber && m.studentNumber.trim();
+      if (hasName && !hasSN) {
+        triggerError(`Please provide the Student Number for "${m.name.trim()}" in the members list.`);
+        return;
+      }
+      if (hasSN && !hasName) {
+        triggerError(`Please provide the full name for the member with Student Number "${m.studentNumber.trim()}".`);
+        return;
+      }
+    }
+
     const rawFields = {
       researcher_name: form.get('researcher_name'),
       email: form.get('email') || '',
@@ -171,6 +185,9 @@ const UserReserveEquipment = () => {
       stakeholder_type: stakeholderType,
       status: 'pending',
       batch_id: batchId,
+      members_list: members
+        .filter((m) => m.name && m.name.trim())
+        .map((m) => `${sanitizeText(m.name, { maxLength: 150 })} — Student No. ${sanitizeText(m.studentNumber, { maxLength: 50 })}`),
     };
 
     const rows = items.map((it) => ({
@@ -423,6 +440,7 @@ const UserReserveEquipment = () => {
                   <tr className="bg-muted/60 border-b-2 border-border">
                     <th className="px-4 py-2.5 text-left text-xs font-bold text-muted-foreground uppercase w-12">#</th>
                     <th className="px-4 py-2.5 text-left text-xs font-bold text-muted-foreground uppercase">Full Name</th>
+                    <th className="px-4 py-2.5 text-left text-xs font-bold text-muted-foreground uppercase">Student Number</th>
                     <th className="px-4 py-2.5 w-10"></th>
                   </tr>
                 </thead>
@@ -434,8 +452,17 @@ const UserReserveEquipment = () => {
                         <input
                           type="text"
                           value={member.name}
-                          onChange={(e) => updateMember(idx, e.target.value)}
+                          onChange={(e) => updateMember(idx, 'name', e.target.value)}
                           placeholder="Enter full name…"
+                          className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-card text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/10"
+                        />
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <input
+                          type="text"
+                          value={member.studentNumber}
+                          onChange={(e) => updateMember(idx, 'studentNumber', e.target.value)}
+                          placeholder="Enter student number…"
                           className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-card text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/10"
                         />
                       </td>

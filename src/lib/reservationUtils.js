@@ -259,6 +259,139 @@ export const updateReservation = async (reservationId, updates) => {
 };
 
 /**
+ * Resubmit a rejected lab reservation after edits: applies the updates and
+ * sends it back to 'pending' so it re-enters the admin/staff approval queue.
+ * @param {number} reservationId - Reservation ID
+ * @param {Object} updates - Fields to update alongside the resubmission
+ * @returns {Promise<Object>}
+ */
+export const resubmitReservation = async (reservationId, updates = {}) => {
+  try {
+    const { data, error } = await supabase
+      .from('reservations')
+      .update({ ...updates, status: 'pending', rejection_reason: null, approved_by: null, approved_at: null })
+      .eq('id', reservationId)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    return data;
+  } catch (error) {
+    console.error('Error resubmitting reservation:', error);
+    throw error;
+  }
+};
+
+/**
+ * Update the status (approve/reject/etc.) for every laboratory row that
+ * shares a batch_id (i.e. every lab in a single multi-lab submission), so
+ * admins/staff can act on the whole request at once instead of one row at
+ * a time.
+ * @param {Array<number>} reservationIds - Reservation IDs in the batch
+ * @param {string} newStatus - New status
+ * @param {string} userId - Admin/staff user ID
+ * @param {string} rejectionReason - Optional rejection reason
+ * @returns {Promise<Array>}
+ */
+export const updateReservationApprovalBatch = async (reservationIds, newStatus, userId, rejectionReason = null) => {
+  try {
+    const updateData = {
+      status: newStatus,
+      approved_by: userId,
+      approved_at: new Date().toISOString()
+    };
+
+    if (rejectionReason) {
+      updateData.rejection_reason = rejectionReason;
+    }
+
+    const { data, error } = await supabase
+      .from('reservations')
+      .update(updateData)
+      .in('id', reservationIds)
+      .select();
+
+    if (error) throw error;
+
+    return data;
+  } catch (error) {
+    console.error('Error updating batch reservation approval:', error);
+    throw error;
+  }
+};
+
+/**
+ * Cancel every laboratory row sharing a batch_id in one go.
+ * @param {Array<number>} reservationIds - Reservation IDs in the batch
+ * @returns {Promise<Array>}
+ */
+export const cancelReservationBatch = async (reservationIds) => {
+  try {
+    const { data, error } = await supabase
+      .from('reservations')
+      .update({ status: 'cancelled' })
+      .in('id', reservationIds)
+      .select();
+
+    if (error) throw error;
+
+    return data;
+  } catch (error) {
+    console.error('Error cancelling batch reservation:', error);
+    throw error;
+  }
+};
+
+/**
+ * Resubmit one or more rejected lab reservations after edits (e.g. all rows
+ * sharing a batch_id), sending them back to 'pending' for re-review.
+ * @param {Array<number>} reservationIds - Reservation IDs to resubmit
+ * @param {Object} updates - Fields to update alongside the resubmission
+ * @returns {Promise<Array>}
+ */
+export const resubmitReservationBatch = async (reservationIds, updates = {}) => {
+  try {
+    const { data, error } = await supabase
+      .from('reservations')
+      .update({ ...updates, status: 'pending', rejection_reason: null, approved_by: null, approved_at: null })
+      .in('id', reservationIds)
+      .select();
+
+    if (error) throw error;
+
+    return data;
+  } catch (error) {
+    console.error('Error resubmitting batch reservation:', error);
+    throw error;
+  }
+};
+
+/**
+ * Resubmit one or more rejected equipment reservations after edits (e.g. all
+ * rows sharing a batch_id), sending them back to 'pending' for re-review.
+ * @param {Array<number>} reservationIds - Equipment reservation IDs to resubmit
+ * @param {Object} updates - Fields to update alongside the resubmission
+ * @returns {Promise<Array>}
+ */
+export const resubmitEquipmentReservations = async (reservationIds, updates = {}) => {
+  try {
+    const { data, error } = await supabase
+      .from('equipment_reservations')
+      .update({ ...updates, status: 'pending', rejection_reason: null })
+      .in('id', reservationIds)
+      .select();
+
+    if (error) throw error;
+
+    return data;
+  } catch (error) {
+    console.error('Error resubmitting equipment reservations:', error);
+    throw error;
+  }
+};
+
+/**
  * Add equipment to a reservation
  * @param {number} reservationId - Reservation ID
  * @param {number} equipmentId - Equipment ID

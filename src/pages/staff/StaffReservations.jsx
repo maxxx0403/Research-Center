@@ -1,12 +1,36 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, Fragment } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Search, Users, Check, X, MessageSquare } from 'lucide-react';
+import { Search, Users, Check, X, MessageSquare, FlaskConical, Package, ChevronDown, ChevronUp } from 'lucide-react';
 import StatusBadge from '@/components/StatusBadge';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { notifyReservationApproved, notifyReservationRejected } from '@/lib/notifications';
 import ReservationMessagesPanel from '@/components/ReservationMessagesPanel';
+
+const STATUS_PRIORITY = ['rejected', 'pending', 'reserved', 'in_use', 'completed', 'cancelled'];
+
+// Groups rows submitted together (same batch_id) into one entry, so a
+// multi-lab or multi-equipment request shows up as a single row/ID in the
+// approval queue instead of one row per laboratory/equipment item.
+const groupByBatch = (items) => {
+  const groups = new Map();
+  for (const r of items) {
+    const key = r.batch_id ? `batch-${r.batch_id}` : `single-${r.id}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(r);
+  }
+  return Array.from(groups.entries()).map(([key, group]) => {
+    const sorted = [...group].sort((a, b) => a.id - b.id);
+    return {
+      key,
+      ids: sorted.map((it) => it.id),
+      items: sorted,
+      primary: sorted[0],
+      status: STATUS_PRIORITY.find((s) => sorted.some((it) => it.status === s)) || sorted[0].status,
+    };
+  });
+};
 
 const StaffReservations = () => {
   const { user, assignedRoomIds } = useAuth();
@@ -21,16 +45,18 @@ const StaffReservations = () => {
   const [rejectionEqReason, setRejectionEqReason] = useState('');
   const [messagingItem, setMessagingItem] = useState(null);
   const [highlightId, setHighlightId] = useState(null);
+  const [expandedLabGroups, setExpandedLabGroups] = useState({});
+  const [expandedEqGroups, setExpandedEqGroups] = useState({});
 
   const loadData = async () => {
     const [labRes, eqRes] = await Promise.all([
     supabase.
     from('reservations').
-    select('id, user_id, researcher_name, email, start_datetime, end_datetime, status, rejection_reason, members_list, laboratory_id, laboratories(lab_name, lab_code, floor)').
+    select('id, user_id, researcher_name, email, start_datetime, end_datetime, status, rejection_reason, members_list, laboratory_id, batch_id, laboratories(lab_name, lab_code, floor)').
     order('start_datetime', { ascending: false }),
     supabase.
     from('equipment_reservations').
-    select('id, user_id, researcher_name, email, quantity_reserved, start_datetime, end_datetime, status, rejection_reason, equipment(name, brand, laboratory_id, laboratories(lab_code, floor))').
+    select('id, user_id, researcher_name, email, quantity_reserved, start_datetime, end_datetime, status, rejection_reason, batch_id, members_list, equipment(name, brand, laboratory_id, laboratories(lab_code, floor))').
     order('start_datetime', { ascending: false })]
     );
 
@@ -70,75 +96,88 @@ const StaffReservations = () => {
     setSearchParams({}, { replace: true });
   }, [loading, searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const filteredLab = labItems.filter((r) =>
+  const labGroups = useMemo(() => groupByBatch(labItems), [labItems]);
+  const filteredLabGroups = labGroups.filter((g) =>
   !search ||
-  r.researcher_name.toLowerCase().includes(search.toLowerCase()) ||
-  (r.email || '').toLowerCase().includes(search.toLowerCase())
+  g.primary.researcher_name.toLowerCase().includes(search.toLowerCase()) ||
+  (g.primary.email || '').toLowerCase().includes(search.toLowerCase())
   );
-  const filteredEq = eqItems.filter((r) =>
+  const eqGroups = useMemo(() => groupByBatch(eqItems), [eqItems]);
+  const filteredEqGroups = eqGroups.filter((g) =>
   !search ||
-  r.researcher_name.toLowerCase().includes(search.toLowerCase()) ||
-  (r.equipment?.name || '').toLowerCase().includes(search.toLowerCase())
+  g.primary.researcher_name.toLowerCase().includes(search.toLowerCase()) ||
+  g.items.some((it) => (it.equipment?.name || '').toLowerCase().includes(search.toLowerCase()))
   );
 
   const fmt = (d) => new Date(d).toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
-  const approveLab = async (id) => {
-    const item = labItems.find((r) => r.id === id);
+  const toggleLabGroup = (key) => setExpandedLabGroups((prev) => ({ ...prev, [key]: !prev[key] }));
+  const toggleEqGroup = (key) => setExpandedEqGroups((prev) => ({ ...prev, [key]: !prev[key] }));
+
+  const approveLabGroup = async (group) => {
+    const ids = group.ids;
+    const label = ids.length > 1 ? `Reservation #RC${String(ids[0]).padStart(5, '0')} (${ids.length} laboratories)` : `Reservation #RC${String(ids[0]).padStart(5, '0')}`;
     const { error } = await supabase.from('reservations').update({
       status: 'reserved',
       approved_by: user.id,
       approved_at: new Date().toISOString()
-    }).eq('id', id);
+    }).in('id', ids);
     if (error) { toast.error('Failed to approve: ' + error.message); return; }
-    setLabItems((prev) => prev.map((r) => r.id === id ? { ...r, status: 'reserved' } : r));
+    setLabItems((prev) => prev.map((r) => ids.includes(r.id) ? { ...r, status: 'reserved' } : r));
     toast.success('Reservation approved.');
-    if (item?.user_id) notifyReservationApproved({ userId: item.user_id, label: `Reservation #RC${String(id).padStart(5, '0')}`, reservationType: 'lab', reservationId: id });
+    if (group.primary?.user_id) notifyReservationApproved({ userId: group.primary.user_id, label, reservationType: 'lab', reservationId: ids[0] });
   };
 
   const rejectLab = async () => {
     if (!rejectingId) return;
-    const item = labItems.find((r) => r.id === rejectingId);
+    const group = labGroups.find((g) => g.key === rejectingId);
+    if (!group) return;
+    const ids = group.ids;
+    const label = ids.length > 1 ? `Reservation #RC${String(ids[0]).padStart(5, '0')} (${ids.length} laboratories)` : `Reservation #RC${String(ids[0]).padStart(5, '0')}`;
     const { error } = await supabase.from('reservations').update({
       status: 'rejected',
       approved_by: user.id,
       approved_at: new Date().toISOString(),
       rejection_reason: rejectionReason || null
-    }).eq('id', rejectingId);
+    }).in('id', ids);
     if (error) { toast.error('Failed to reject: ' + error.message); return; }
-    setLabItems((prev) => prev.map((r) => r.id === rejectingId ? { ...r, status: 'rejected', rejection_reason: rejectionReason || null } : r));
+    setLabItems((prev) => prev.map((r) => ids.includes(r.id) ? { ...r, status: 'rejected', rejection_reason: rejectionReason || null } : r));
     toast.success('Reservation rejected.');
-    if (item?.user_id) notifyReservationRejected({ userId: item.user_id, label: `Reservation #RC${String(rejectingId).padStart(5, '0')}`, reason: rejectionReason, reservationType: 'lab', reservationId: rejectingId });
+    if (group.primary?.user_id) notifyReservationRejected({ userId: group.primary.user_id, label, reason: rejectionReason, reservationType: 'lab', reservationId: ids[0] });
     setRejectingId(null);
     setRejectionReason('');
   };
 
-  const approveEq = async (id) => {
-    const item = eqItems.find((r) => r.id === id);
+  const approveEqGroup = async (group) => {
+    const ids = group.ids;
+    const label = ids.length > 1 ? `Equipment request #EQ${String(ids[0]).padStart(5, '0')} (${ids.length} items)` : `Equipment request #EQ${String(ids[0]).padStart(5, '0')}`;
     const { error } = await supabase.from('equipment_reservations').update({
       status: 'reserved',
       approved_by: user.id,
       approved_at: new Date().toISOString()
-    }).eq('id', id);
+    }).in('id', ids);
     if (error) { toast.error('Failed to approve: ' + error.message); return; }
-    setEqItems((prev) => prev.map((r) => r.id === id ? { ...r, status: 'reserved' } : r));
+    setEqItems((prev) => prev.map((r) => ids.includes(r.id) ? { ...r, status: 'reserved' } : r));
     toast.success('Equipment reservation approved.');
-    if (item?.user_id) notifyReservationApproved({ userId: item.user_id, label: `Equipment request #EQ${String(id).padStart(5, '0')}`, reservationType: 'equipment', reservationId: id });
+    if (group.primary?.user_id) notifyReservationApproved({ userId: group.primary.user_id, label, reservationType: 'equipment', reservationId: ids[0] });
   };
 
   const rejectEq = async () => {
     if (!rejectingEqId) return;
-    const item = eqItems.find((r) => r.id === rejectingEqId);
+    const group = eqGroups.find((g) => g.key === rejectingEqId);
+    if (!group) return;
+    const ids = group.ids;
+    const label = ids.length > 1 ? `Equipment request #EQ${String(ids[0]).padStart(5, '0')} (${ids.length} items)` : `Equipment request #EQ${String(ids[0]).padStart(5, '0')}`;
     const { error } = await supabase.from('equipment_reservations').update({
       status: 'rejected',
       approved_by: user.id,
       approved_at: new Date().toISOString(),
       rejection_reason: rejectionEqReason || null
-    }).eq('id', rejectingEqId);
+    }).in('id', ids);
     if (error) { toast.error('Failed to reject: ' + error.message); return; }
-    setEqItems((prev) => prev.map((r) => r.id === rejectingEqId ? { ...r, status: 'rejected', rejection_reason: rejectionEqReason || null } : r));
+    setEqItems((prev) => prev.map((r) => ids.includes(r.id) ? { ...r, status: 'rejected', rejection_reason: rejectionEqReason || null } : r));
     toast.success('Equipment reservation rejected.');
-    if (item?.user_id) notifyReservationRejected({ userId: item.user_id, label: `Equipment request #EQ${String(rejectingEqId).padStart(5, '0')}`, reason: rejectionEqReason, reservationType: 'equipment', reservationId: rejectingEqId });
+    if (group.primary?.user_id) notifyReservationRejected({ userId: group.primary.user_id, label, reason: rejectionEqReason, reservationType: 'equipment', reservationId: ids[0] });
     setRejectingEqId(null);
     setRejectionEqReason('');
   };
@@ -157,7 +196,7 @@ const StaffReservations = () => {
       </div>
 
       <div>
-        <h3 className="font-heading text-sm font-bold mb-3">Laboratory Reservations <span className="text-muted-foreground font-normal">({filteredLab.length})</span></h3>
+        <h3 className="font-heading text-sm font-bold mb-3">Laboratory Reservations <span className="text-muted-foreground font-normal">({filteredLabGroups.length})</span></h3>
         <div className="bg-card rounded-xl shadow-card overflow-hidden overflow-x-auto">
           <table className="w-full text-sm border-collapse">
             <thead>
@@ -173,12 +212,20 @@ const StaffReservations = () => {
             <tbody>
               {loading ? (
                 <tr><td colSpan={6} className="text-center py-10 text-muted-foreground text-xs">Loading...</td></tr>
-              ) : filteredLab.length === 0 ? (
+              ) : filteredLabGroups.length === 0 ? (
                 <tr><td colSpan={6} className="text-center py-10 text-muted-foreground text-xs">No reservations found.</td></tr>
-              ) : filteredLab.map((r) =>
-              <tr key={r.id} id={`row-lab-${r.id}`} className={`border-b border-muted last:border-0 transition-colors ${highlightId === `lab-${r.id}` ? 'bg-primary/10 ring-2 ring-primary/40' : ''}`}>
+              ) : filteredLabGroups.map((group) => {
+                const r = group.primary;
+                const isBatch = group.items.length > 1;
+                const isGroupExpanded = expandedLabGroups[group.key];
+                return (
+                <Fragment key={group.key}>
+                <tr id={`row-lab-${r.id}`} className={`border-b border-muted last:border-0 transition-colors ${highlightId === `lab-${r.id}` ? 'bg-primary/10 ring-2 ring-primary/40' : ''}`}>
                   <td className="px-4 py-3">
-                    <div className="font-semibold">{r.researcher_name}</div>
+                    <div className="font-semibold">
+                      {r.researcher_name}
+                      {isBatch && <span className="text-muted-foreground font-normal text-xs"> · #RC{String(r.id).padStart(5, '0')} (+{group.items.length - 1})</span>}
+                    </div>
                     <div className="text-xs text-muted-foreground">{r.email}</div>
                   </td>
                   <td className="px-4 py-3">
@@ -189,18 +236,33 @@ const StaffReservations = () => {
                   }
                   </td>
                   <td className="px-4 py-3">
-                    <div className="font-medium">{r.laboratories?.lab_name}</div>
-                    <div className="text-xs text-muted-foreground">{r.laboratories?.lab_code}</div>
+                    {isBatch ? (
+                      <button
+                        onClick={() => toggleLabGroup(group.key)}
+                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary bg-primary/10 border border-primary/20 px-2.5 py-1 rounded-full hover:bg-primary/20 transition-colors cursor-pointer"
+                      >
+                        <FlaskConical className="w-3 h-3" />
+                        {group.items.length} labs
+                        {isGroupExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                      </button>
+                    ) : (
+                      <>
+                        <div className="font-medium">{r.laboratories?.lab_name}</div>
+                        <div className="text-xs text-muted-foreground">{r.laboratories?.lab_code}</div>
+                      </>
+                    )}
                   </td>
-                  <td className="px-4 py-3 text-xs">{fmt(r.start_datetime)} – {fmt(r.end_datetime)}</td>
-                  <td className="px-4 py-3"><StatusBadge status={r.status} /></td>
+                  <td className="px-4 py-3 text-xs">
+                    {isBatch ? <span className="text-muted-foreground italic">Multiple schedules</span> : <>{fmt(r.start_datetime)} – {fmt(r.end_datetime)}</>}
+                  </td>
+                  <td className="px-4 py-3"><StatusBadge status={group.status} /></td>
                   <td className="px-4 py-3">
-                    {r.status === 'pending' ?
+                    {group.status === 'pending' ?
                   <div className="flex gap-1.5">
-                        <button onClick={() => approveLab(r.id)} className="bg-success text-success-foreground px-2 py-1 rounded text-xs font-semibold border-none cursor-pointer hover:brightness-110 inline-flex items-center gap-1">
+                        <button onClick={() => approveLabGroup(group)} className="bg-success text-success-foreground px-2 py-1 rounded text-xs font-semibold border-none cursor-pointer hover:brightness-110 inline-flex items-center gap-1">
                           <Check className="w-3.5 h-3.5" /> Accept
                         </button>
-                        <button onClick={() => setRejectingId(r.id)} className="bg-destructive text-destructive-foreground px-2 py-1 rounded text-xs font-semibold border-none cursor-pointer hover:brightness-110 inline-flex items-center gap-1">
+                        <button onClick={() => setRejectingId(group.key)} className="bg-destructive text-destructive-foreground px-2 py-1 rounded text-xs font-semibold border-none cursor-pointer hover:brightness-110 inline-flex items-center gap-1">
                           <X className="w-3.5 h-3.5" /> Reject
                         </button>
                       </div> :
@@ -216,14 +278,37 @@ const StaffReservations = () => {
                     </button>
                   </td>
                 </tr>
-              )}
+                {isBatch && isGroupExpanded && (
+                  <tr className="bg-primary/5 border-b border-muted">
+                    <td colSpan={6} className="px-6 py-3">
+                      <p className="text-xs font-bold text-primary uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                        <FlaskConical className="w-3.5 h-3.5" /> Laboratories in this Reservation
+                      </p>
+                      <div className="space-y-2">
+                        {group.items.map((it) => (
+                          <div key={it.id} className="bg-card border border-border rounded-lg px-3 py-2.5 text-xs flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                              <span className="font-semibold text-foreground">{it.laboratories?.lab_name}</span>{' '}
+                              <code className="bg-muted px-1 py-0.5 rounded text-[0.7rem]">{it.laboratories?.lab_code}</code>
+                              <span className="text-muted-foreground ml-2">{fmt(it.start_datetime)} – {fmt(it.end_datetime)}</span>
+                            </div>
+                            <StatusBadge status={it.status} />
+                          </div>
+                        ))}
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>
       </div>
 
       <div>
-        <h3 className="font-heading text-sm font-bold mb-3">Equipment Reservations <span className="text-muted-foreground font-normal">({filteredEq.length})</span></h3>
+        <h3 className="font-heading text-sm font-bold mb-3">Equipment Reservations <span className="text-muted-foreground font-normal">({filteredEqGroups.length})</span></h3>
         <div className="bg-card rounded-xl shadow-card overflow-hidden overflow-x-auto">
           <table className="w-full text-sm border-collapse">
             <thead>
@@ -238,27 +323,55 @@ const StaffReservations = () => {
             <tbody>
               {loading ? (
                 <tr><td colSpan={5} className="text-center py-10 text-muted-foreground text-xs">Loading...</td></tr>
-              ) : filteredEq.length === 0 ? (
+              ) : filteredEqGroups.length === 0 ? (
                 <tr><td colSpan={5} className="text-center py-10 text-muted-foreground text-xs">No equipment reservations found.</td></tr>
-              ) : filteredEq.map((r) =>
-              <tr key={r.id} id={`row-equipment-${r.id}`} className={`border-b border-muted last:border-0 transition-colors ${highlightId === `equipment-${r.id}` ? 'bg-primary/10 ring-2 ring-primary/40' : ''}`}>
+              ) : filteredEqGroups.map((group) => {
+                const r = group.primary;
+                const isBatch = group.items.length > 1;
+                const isGroupExpanded = expandedEqGroups[group.key];
+                return (
+                <Fragment key={group.key}>
+                <tr id={`row-equipment-${r.id}`} className={`border-b border-muted last:border-0 transition-colors ${highlightId === `equipment-${r.id}` ? 'bg-primary/10 ring-2 ring-primary/40' : ''}`}>
                   <td className="px-4 py-3">
-                    <div className="font-semibold">{r.researcher_name}</div>
+                    <div className="font-semibold">
+                      {r.researcher_name}
+                      {isBatch && <span className="text-muted-foreground font-normal text-xs"> · #EQ{String(r.id).padStart(5, '0')} (+{group.items.length - 1})</span>}
+                    </div>
                     <div className="text-xs text-muted-foreground">{r.email}</div>
+                    {r.members_list?.length > 0 && (
+                      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
+                        <Users className="w-3.5 h-3.5" /> {r.members_list.length} member{r.members_list.length > 1 ? 's' : ''}
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-3">
-                    <div className="font-medium">{r.equipment?.name}</div>
-                    <div className="text-xs text-muted-foreground">{r.equipment?.brand} · Qty {r.quantity_reserved}</div>
+                    {isBatch ? (
+                      <button
+                        onClick={() => toggleEqGroup(group.key)}
+                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary bg-primary/10 border border-primary/20 px-2.5 py-1 rounded-full hover:bg-primary/20 transition-colors cursor-pointer"
+                      >
+                        <Package className="w-3 h-3" />
+                        {group.items.length} items
+                        {isGroupExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                      </button>
+                    ) : (
+                      <>
+                        <div className="font-medium">{r.equipment?.name}</div>
+                        <div className="text-xs text-muted-foreground">{r.equipment?.brand} · Qty {r.quantity_reserved}</div>
+                      </>
+                    )}
                   </td>
-                  <td className="px-4 py-3 text-xs">{fmt(r.start_datetime)} – {fmt(r.end_datetime)}</td>
-                  <td className="px-4 py-3"><StatusBadge status={r.status} /></td>
+                  <td className="px-4 py-3 text-xs">
+                    {isBatch ? <span className="text-muted-foreground italic">Multiple schedules</span> : <>{fmt(r.start_datetime)} – {fmt(r.end_datetime)}</>}
+                  </td>
+                  <td className="px-4 py-3"><StatusBadge status={group.status} /></td>
                   <td className="px-4 py-3">
-                    {r.status === 'pending' ?
+                    {group.status === 'pending' ?
                   <div className="flex gap-1.5">
-                        <button onClick={() => approveEq(r.id)} className="bg-success text-success-foreground px-2 py-1 rounded text-xs font-semibold border-none cursor-pointer hover:brightness-110 inline-flex items-center gap-1">
+                        <button onClick={() => approveEqGroup(group)} className="bg-success text-success-foreground px-2 py-1 rounded text-xs font-semibold border-none cursor-pointer hover:brightness-110 inline-flex items-center gap-1">
                           <Check className="w-3.5 h-3.5" /> Accept
                         </button>
-                        <button onClick={() => setRejectingEqId(r.id)} className="bg-destructive text-destructive-foreground px-2 py-1 rounded text-xs font-semibold border-none cursor-pointer hover:brightness-110 inline-flex items-center gap-1">
+                        <button onClick={() => setRejectingEqId(group.key)} className="bg-destructive text-destructive-foreground px-2 py-1 rounded text-xs font-semibold border-none cursor-pointer hover:brightness-110 inline-flex items-center gap-1">
                           <X className="w-3.5 h-3.5" /> Reject
                         </button>
                       </div> :
@@ -274,7 +387,28 @@ const StaffReservations = () => {
                     </button>
                   </td>
                 </tr>
-              )}
+                {isBatch && isGroupExpanded && (
+                  <tr className="bg-primary/5 border-b border-muted">
+                    <td colSpan={5} className="px-6 py-3">
+                      <p className="text-xs font-bold text-primary uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                        <Package className="w-3.5 h-3.5" /> Equipment in this Request
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {group.items.map((it) => (
+                          <div key={it.id} className="bg-card border border-border rounded-lg px-3 py-2 text-xs flex items-center gap-2">
+                            <span className="font-semibold text-foreground">{it.equipment?.name}</span>
+                            {it.equipment?.brand && <span className="text-muted-foreground">{it.equipment.brand}</span>}
+                            <span className="bg-primary/10 text-primary font-bold px-1.5 py-0.5 rounded">x{it.quantity_reserved}</span>
+                            <StatusBadge status={it.status} />
+                          </div>
+                        ))}
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Bell, Check, CalendarCheck, Package, XCircle, CheckCircle2, MessageSquare } from 'lucide-react';
+import { Bell, Check, CalendarCheck, Package, XCircle, CheckCircle2, MessageSquare, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -12,6 +12,7 @@ const ICONS = {
   reservation_rejected: XCircle,
   new_reservation: CalendarCheck,
   equipment_added: Package,
+  equipment_removed: Trash2,
   reservation_message: MessageSquare
 };
 

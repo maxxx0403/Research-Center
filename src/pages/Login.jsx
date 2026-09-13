@@ -1,10 +1,29 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
-import { Eye, EyeOff, Lock, Mail, AlertCircle, User } from 'lucide-react';
+import { Eye, EyeOff, Lock, Mail, AlertCircle, User, Check, X } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import cvsuLogo from '@/assets/cvsu-logo.png';
 import { useAuth } from '@/contexts/AuthContext';
 import { validateEmail, validatePassword, sanitizeText, checkLoginThrottle, recordLoginAttempt } from '@/lib/validation';
+
+const PASSWORD_RULES = [
+  { test: (pw) => pw.length >= 8, label: 'At least 8 characters' },
+  { test: (pw) => /[A-Za-z]/.test(pw), label: 'Contains a letter' },
+  { test: (pw) => /[0-9]/.test(pw), label: 'Contains a number' }
+];
+
+const PasswordRequirements = ({ password }) =>
+<ul className="list-none space-y-1 mt-2 mb-1">
+    {PASSWORD_RULES.map((rule) => {
+    const met = rule.test(password);
+    return (
+      <li key={rule.label} className={`flex items-center gap-1.5 text-xs transition-colors ${met ? 'text-success' : 'text-muted-foreground'}`}>
+          {met ? <Check className="w-3.5 h-3.5 flex-shrink-0" /> : <X className="w-3.5 h-3.5 flex-shrink-0 opacity-40" />}
+          {rule.label}
+        </li>);
+
+  })}
+  </ul>;
 
 const Login = () => {
   const navigate = useNavigate();
@@ -17,6 +36,7 @@ const Login = () => {
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
   const [isRegister, setIsRegister] = useState(false);
+  const [signupPassword, setSignupPassword] = useState('');
 
   // Redirect if already logged in
   useEffect(() => {
@@ -33,6 +53,7 @@ const Login = () => {
     setIsRegister(register);
     setError('');
     setSuccess('');
+    setSignupPassword('');
   };
 
   const handleSignIn = async (e) => {
@@ -83,7 +104,7 @@ const Login = () => {
     if (!fullName) { setError('Full name is required.'); return; }
 
     setLoading(true);
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -93,12 +114,19 @@ const Login = () => {
     });
     if (error) {
       setError(error.message);
+      setLoading(false);
+    } else if (data?.session) {
+      // Email confirmation is turned off in Supabase, so the account is
+      // active immediately — no need to tell the user to check their email.
+      // The auth state change will pick up the session and redirect them.
+      setLoading(false);
     } else {
       setSuccess('Account created! Please check your email to confirm your account before signing in.');
       setIsRegister(false);
       e.currentTarget.reset();
+      setSignupPassword('');
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const forgotPassword = async () => {
@@ -180,11 +208,14 @@ const Login = () => {
                 </div>
                 <div className="relative">
                   <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <input name="password" type={showPassword ? 'text' : 'password'} required placeholder="Password" minLength={8} className={inputClass + ' pr-10'} />
+                  <input name="password" type={showPassword ? 'text' : 'password'} required placeholder="Password" minLength={8}
+                    value={signupPassword} onChange={(e) => setSignupPassword(e.target.value)}
+                    className={inputClass + ' pr-10'} />
                   <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 bg-transparent border-none text-muted-foreground hover:text-foreground cursor-pointer">
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
+                <PasswordRequirements password={signupPassword} />
                 <div className="relative">
                   <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <input name="confirm_password" type={showPassword ? 'text' : 'password'} required placeholder="Confirm Password" minLength={8} className={inputClass} />
@@ -316,11 +347,14 @@ const Login = () => {
                   <label className="block mb-1.5 text-foreground font-semibold text-sm">Password</label>
                   <div className="relative">
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    <input name="password" type={showPassword ? 'text' : 'password'} required placeholder="Your password" minLength={8} className={inputClass + ' pr-10'} />
+                    <input name="password" type={showPassword ? 'text' : 'password'} required placeholder="Your password" minLength={8}
+                      value={signupPassword} onChange={(e) => setSignupPassword(e.target.value)}
+                      className={inputClass + ' pr-10'} />
                     <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 bg-transparent border-none text-muted-foreground hover:text-foreground cursor-pointer">
                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
+                  <PasswordRequirements password={signupPassword} />
                 </div>
                 <div>
                   <label className="block mb-1.5 text-foreground font-semibold text-sm">Confirm Password</label>

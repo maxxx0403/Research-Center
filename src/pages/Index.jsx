@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { FlaskConical, Microscope, Star, Send, Users, Calendar, Award, ChevronRight, CheckCircle2, Package, FileText, Download, Shield } from 'lucide-react';
+import { FlaskConical, Microscope, Star, Send, Users, Calendar, Award, ChevronRight, CheckCircle2, Package, FileText, Download, Shield, Search, Lock } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import StatusBadge from '@/components/StatusBadge';
 import { supabase } from '@/integrations/supabase/client';
@@ -20,6 +20,8 @@ const Index = () => {
   const [comment, setComment] = useState('');
   const [labs, setLabs] = useState([]);
   const [equipmentCount, setEquipmentCount] = useState(0);
+  const [labSearch, setLabSearch] = useState('');
+  const [labStatusFilter, setLabStatusFilter] = useState('all');
 
   useEffect(() => {
     Promise.all([
@@ -30,6 +32,18 @@ const Index = () => {
       setEquipmentCount(eqRes.count || 0);
     });
   }, []);
+
+  const filteredLabs = useMemo(() => {
+    const term = labSearch.trim().toLowerCase();
+    return labs.filter((lab) => {
+      const matchesSearch = !term ||
+        lab.lab_name?.toLowerCase().includes(term) ||
+        lab.lab_code?.toLowerCase().includes(term) ||
+        lab.floor?.toLowerCase?.().includes(term);
+      const matchesStatus = labStatusFilter === 'all' || lab.status === labStatusFilter;
+      return matchesSearch && matchesStatus;
+    });
+  }, [labs, labSearch, labStatusFilter]);
 
   const handleFeedbackSubmit = async (e) => {
     e.preventDefault();
@@ -140,14 +154,42 @@ const Index = () => {
 
       {/* Laboratories */}
       <section id="laboratories" className="py-24 px-[5%] bg-card">
-        <div className="text-center mb-14">
+        <div className="text-center mb-10">
           <h2 className="font-heading text-[clamp(1.9rem,4vw,2.8rem)] text-primary mb-3 font-bold">Our Laboratories</h2>
           <p className="text-lg text-muted-foreground max-w-[580px] mx-auto">World-class research facilities equipped with state-of-the-art instruments</p>
         </div>
+
+        {/* Search & filter */}
+        <div className="max-w-[1200px] mx-auto mb-10 flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <input
+              type="text"
+              value={labSearch}
+              onChange={(e) => setLabSearch(e.target.value)}
+              placeholder="Search laboratories by name, code, or floor…"
+              className="w-full pl-10 pr-4 py-3 border-2 border-border rounded-lg text-sm bg-background text-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 transition-colors"
+            />
+          </div>
+          <select
+            value={labStatusFilter}
+            onChange={(e) => setLabStatusFilter(e.target.value)}
+            className="px-4 py-3 border-2 border-border rounded-lg text-sm bg-background text-foreground focus:outline-none focus:border-primary sm:w-56"
+          >
+            <option value="all">All statuses</option>
+            <option value="available">Available</option>
+            <option value="occupied">Occupied</option>
+            <option value="maintenance">Under Maintenance</option>
+          </select>
+        </div>
+
+        {filteredLabs.length === 0 ?
+        <p className="text-center text-muted-foreground max-w-[1200px] mx-auto py-10">No laboratories match your search.</p> :
+
         <div className="grid grid-cols-[repeat(auto-fill,minmax(340px,1fr))] gap-6 max-w-[1200px] mx-auto">
-          {labs.map((lab) =>
-          <div key={lab.id} className="bg-card rounded-2xl p-6 shadow-card border border-border hover:-translate-y-2 hover:shadow-card-hover transition-all relative overflow-hidden group">
-              <div className="absolute top-0 left-0 right-0 h-1 gradient-primary" />
+          {filteredLabs.map((lab) =>
+          <div key={lab.id} className={`bg-card rounded-2xl p-6 shadow-card border border-border hover:-translate-y-2 hover:shadow-card-hover transition-all relative overflow-hidden group ${lab.status !== 'available' ? 'opacity-90' : ''}`}>
+              <div className={`absolute top-0 left-0 right-0 h-1 ${lab.status === 'available' ? 'gradient-primary' : lab.status === 'maintenance' ? 'bg-destructive' : 'bg-warning'}`} />
               <div className="w-14 h-14 gradient-primary rounded-xl flex items-center justify-center mb-5 text-primary-foreground">
                 <FlaskConical className="w-5 h-5" />
               </div>
@@ -162,17 +204,18 @@ const Index = () => {
               </div>
               {lab.status === 'available' ?
             <Link to="/login"
-            className="w-full py-3 gradient-primary text-primary-foreground border-none rounded-lg font-semibold text-sm no-underline block text-center hover:-translate-y-0.5 hover:shadow-lg transition-all">
-                  Reserve Now <ChevronRight className="w-4 h-4 inline" />
+            className="w-full py-3 gradient-primary text-primary-foreground border-none rounded-lg font-semibold text-sm no-underline flex items-center justify-center gap-1.5 hover:-translate-y-0.5 hover:shadow-lg transition-all">
+                  Reserve Now <ChevronRight className="w-4 h-4" />
                 </Link> :
 
-            <span className="w-full py-3 bg-muted text-muted-foreground rounded-lg font-semibold text-sm block text-center cursor-not-allowed">
-                  Not Available
+            <span className="w-full py-3 bg-destructive/10 text-destructive border-2 border-destructive/25 rounded-lg font-bold text-sm flex items-center justify-center gap-1.5 cursor-not-allowed">
+                  <Lock className="w-4 h-4" /> Not Available
                 </span>
             }
             </div>
           )}
         </div>
+        }
       </section>
 
       {/* Downloadable Forms */}

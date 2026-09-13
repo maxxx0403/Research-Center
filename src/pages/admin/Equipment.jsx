@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react';
-import { Search, Plus, X, Pencil, Trash2 } from 'lucide-react';
+import { Search, Plus, X, Pencil, Trash2, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import StatusBadge from '@/components/StatusBadge';
 import { toast } from 'sonner';
+import { notifyEquipmentRemoved } from '@/lib/notifications';
+
+const ACTIVE_STATUSES = ['pending', 'reserved', 'in_use'];
 
 const EMPTY_EQ = { name: '', brand: '', model: '', laboratory_id: '', quantity: '1', status: 'available' };
 const inputCls = "w-full px-3 py-2.5 border border-border rounded-lg text-sm bg-card text-foreground focus:outline-none focus:border-primary";
@@ -19,6 +22,25 @@ const AdminEquipment = () => {
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [affected, setAffected] = useState({ loading: false, standalone: [], attached: [] });
+
+  useEffect(() => {
+    if (!deleteTarget) { setAffected({ loading: false, standalone: [], attached: [] }); return; }
+    let cancelled = false;
+    setAffected({ loading: true, standalone: [], attached: [] });
+    (async () => {
+      const [{ data: standalone }, { data: attached }] = await Promise.all([
+        supabase.from('equipment_reservations').select('id, user_id, status').eq('equipment_id', deleteTarget.id).in('status', ACTIVE_STATUSES),
+        supabase.from('reservation_equipment').select('id, reservations!inner(id, user_id, status)').eq('equipment_id', deleteTarget.id).in('reservations.status', ACTIVE_STATUSES),
+      ]);
+      if (!cancelled) {
+        setAffected({ loading: false, standalone: standalone || [], attached: attached || [] });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [deleteTarget]);
+
+  const affectedCount = affected.standalone.length + affected.attached.length;
 
   useEffect(() => {
     const fetch = async () => {
@@ -90,11 +112,30 @@ const AdminEquipment = () => {
   const handleDelete = async () => {
     if (!deleteTarget) return;
     setDeleting(true);
+    const equipmentName = deleteTarget.name;
+    // Capture who's affected before the row (and its FK-linked reservation
+    // rows) are gone, so we can still notify them afterward.
+    const standaloneToNotify = affected.standalone;
+    const attachedToNotify = affected.attached;
+
     const { error } = await supabase.from('equipment').delete().eq('id', deleteTarget.id);
     setDeleting(false);
     if (error) { toast.error('Failed to delete: ' + error.message); return; }
     setEquipment((prev) => prev.filter((e) => e.id !== deleteTarget.id));
-    toast.success(`${deleteTarget.name} deleted.`);
+
+    await Promise.all([
+      ...standaloneToNotify.map((r) =>
+        notifyEquipmentRemoved({ userId: r.user_id, equipmentName, reservationType: 'equipment', reservationId: r.id })
+      ),
+      ...attachedToNotify.map((re) =>
+        notifyEquipmentRemoved({ userId: re.reservations.user_id, equipmentName, reservationType: 'lab', reservationId: re.reservations.id })
+      ),
+    ]);
+
+    const notifiedCount = standaloneToNotify.length + attachedToNotify.length;
+    toast.success(notifiedCount > 0
+      ? `${equipmentName} deleted. Notified ${notifiedCount} user${notifiedCount > 1 ? 's' : ''} with active reservations.`
+      : `${equipmentName} deleted.`);
     setDeleteTarget(null);
   };
 
@@ -247,12 +288,22 @@ const AdminEquipment = () => {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-card rounded-xl shadow-lg w-full max-w-sm p-6">
             <h3 className="font-heading text-base font-bold mb-2">Delete Equipment</h3>
-            <p className="text-sm text-muted-foreground mb-6">
+            <p className="text-sm text-muted-foreground mb-4">
               Are you sure you want to delete <strong className="text-foreground">{deleteTarget.name}</strong>? This action cannot be undone.
             </p>
+            {affected.loading ? (
+              <p className="text-xs text-muted-foreground mb-4">Checking for active reservations…</p>
+            ) : affectedCount > 0 ? (
+              <div className="bg-warning/10 border border-warning/25 text-warning-foreground rounded-lg p-3 mb-4 flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5 text-warning" />
+                <p className="text-xs text-foreground">
+                  <strong>{affectedCount}</strong> user{affectedCount > 1 ? 's have' : ' has'} active reservation{affectedCount > 1 ? 's' : ''} using this equipment. They'll be notified once it's deleted.
+                </p>
+              </div>
+            ) : null}
             <div className="flex gap-3 justify-end">
               <button onClick={() => setDeleteTarget(null)} className="px-4 py-2 rounded-lg border border-border hover:bg-muted text-sm font-semibold cursor-pointer bg-transparent text-foreground">Cancel</button>
-              <button onClick={handleDelete} disabled={deleting} className="px-4 py-2 rounded-lg bg-destructive text-destructive-foreground text-sm font-semibold border-none cursor-pointer hover:opacity-90 transition-opacity disabled:opacity-50">
+              <button onClick={handleDelete} disabled={deleting || affected.loading} className="px-4 py-2 rounded-lg bg-destructive text-destructive-foreground text-sm font-semibold border-none cursor-pointer hover:opacity-90 transition-opacity disabled:opacity-50">
                 {deleting ? 'Deleting…' : 'Delete'}
               </button>
             </div>

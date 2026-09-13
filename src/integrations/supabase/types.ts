@@ -141,6 +141,7 @@ export type Database = {
           user_id: string
           researcher_name: string
           email: string
+          is_anonymous: boolean
           laboratory_id: number | null
           rating: number
           comment: string | null
@@ -153,6 +154,7 @@ export type Database = {
           user_id: string
           researcher_name: string
           email: string
+          is_anonymous?: boolean
           laboratory_id?: number | null
           rating: number
           comment?: string | null
@@ -165,6 +167,7 @@ export type Database = {
           user_id?: string
           researcher_name?: string
           email?: string
+          is_anonymous?: boolean
           laboratory_id?: number | null
           rating?: number
           comment?: string | null
@@ -293,6 +296,7 @@ export type Database = {
       reservations: {
         Row: {
           adviser_name: string
+          batch_id: string | null
           created_at: string
           email: string | null
           end_datetime: string
@@ -313,6 +317,7 @@ export type Database = {
         }
         Insert: {
           adviser_name?: string
+          batch_id?: string | null
           created_at?: string
           email?: string | null
           end_datetime: string
@@ -333,6 +338,7 @@ export type Database = {
         }
         Update: {
           adviser_name?: string
+          batch_id?: string | null
           created_at?: string
           email?: string | null
           end_datetime?: string

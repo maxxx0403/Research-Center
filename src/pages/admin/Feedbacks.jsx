@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Star, Trash2 } from 'lucide-react';
+import { Star, Trash2, EyeOff } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 
 const Stars = ({ n }) =>
@@ -68,7 +68,18 @@ const Feedbacks = () => {
               ) : feedbacks.length > 0 ? (
                 feedbacks.map((fb) =>
                   <tr key={fb.id} className="border-b border-muted hover:bg-muted/30">
-                    <td className="px-4 py-3"><div className="font-semibold">{fb.researcher_name}</div><div className="text-xs text-muted-foreground">{fb.email}</div></td>
+                    <td className="px-4 py-3">
+                      {fb.is_anonymous ? (
+                        <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground bg-muted px-2 py-1 rounded-full">
+                          <EyeOff className="w-3 h-3" /> Anonymous
+                        </div>
+                      ) : (
+                        <>
+                          <div className="font-semibold">{fb.researcher_name}</div>
+                          <div className="text-xs text-muted-foreground">{fb.email}</div>
+                        </>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-xs">{fb.laboratories?.lab_name || <span className="text-muted-foreground italic">General</span>}</td>
                     <td className="px-4 py-3"><Stars n={fb.rating} /><span className="text-xs text-muted-foreground font-semibold">{fb.rating}/5</span></td>
                     <td className="px-4 py-3 text-xs max-w-[260px] leading-relaxed">{fb.comment || <span className="text-muted-foreground italic">No comment</span>}</td>

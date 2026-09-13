@@ -9,6 +9,7 @@ const UserFeedback = () => {
   const [hoverRating, setHoverRating] = useState(0);
   const [comment, setComment] = useState('');
   const [selectedLabId, setSelectedLabId] = useState('');
+  const [isAnonymous, setIsAnonymous] = useState(false);
   const [labs, setLabs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -46,8 +47,9 @@ const UserFeedback = () => {
 
       const { error: err } = await supabase.from('feedbacks').insert({
         user_id: currentUser.id,
-        researcher_name: currentUser.user_metadata?.full_name || 'User',
-        email: currentUser.email,
+        researcher_name: isAnonymous ? 'Anonymous' : (currentUser.user_metadata?.full_name || 'User'),
+        email: isAnonymous ? '' : currentUser.email,
+        is_anonymous: isAnonymous,
         laboratory_id: selectedLabId ? Number(selectedLabId) : null,
         rating: rating,
         comment: comment
@@ -60,6 +62,7 @@ const UserFeedback = () => {
         setRating(0);
         setComment('');
         setSelectedLabId('');
+        setIsAnonymous(false);
       }
     } catch (err) {
       setError('Failed to submit feedback');
@@ -168,6 +171,22 @@ const UserFeedback = () => {
           <p className="text-xs text-muted-foreground mt-1">{comment.length} / 1000 characters</p>
         </div>
 
+        {/* Anonymous toggle */}
+        <div>
+          <label className="flex items-start gap-2.5 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={isAnonymous}
+              onChange={(e) => setIsAnonymous(e.target.checked)}
+              className="mt-1 w-4 h-4 accent-primary cursor-pointer"
+            />
+            <span className="text-sm">
+              <span className="font-semibold text-foreground">Submit anonymously</span>
+              <span className="block text-xs text-muted-foreground mt-0.5">Your name and email won't be shown to staff/admin reviewing this feedback.</span>
+            </span>
+          </label>
+        </div>
+
         {/* Submit Button */}
         <div className="flex gap-3">
           <button
@@ -183,6 +202,7 @@ const UserFeedback = () => {
               setRating(0);
               setComment('');
               setSelectedLabId('');
+              setIsAnonymous(false);
               setError('');
             }}
             className="px-6 py-3 rounded-xl font-semibold border-2 border-border bg-card text-foreground cursor-pointer hover:border-primary hover:text-primary transition-colors"

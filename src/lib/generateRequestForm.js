@@ -29,6 +29,7 @@ import {
 } from 'docx';
 
 import cvsuLogo from '@/assets/cvsu-logo.png';
+import researchCenterLogo from '@/assets/research-center-logo.png';
 
 const CHECKED = '☒';
 const UNCHECKED = '☐';
@@ -90,6 +91,91 @@ export const buildRequestFormData = (reservation) => {
   };
 };
 
+/**
+ * Build the plain-data object for an equipment-only batch — an array of
+ * `equipment_reservations` rows that share the same requester/schedule
+ * (typically all rows with the same batch_id, or a single row when the
+ * user only reserved one item). No laboratory reservation is involved.
+ */
+export const buildEquipmentBatchFormData = (rows) => {
+  const first = rows[0] || {};
+
+  const items = rows.map((r) => ({
+    particular: r.equipment?.name || 'Equipment',
+    quantity: String(r.quantity_reserved ?? ''),
+    knowledge: '',
+    startDate: formatDate(r.start_datetime),
+    endDate: formatDate(r.end_datetime),
+  }));
+
+  const labNames = [...new Set(rows.map((r) => r.equipment?.laboratories?.lab_name).filter(Boolean))];
+
+  return {
+    name: first.researcher_name || '',
+    contact: first.phone ? String(first.phone) : '',
+    email: first.email || '',
+    address: 'N/A',
+    unit: first.unit_college || '',
+    adviser: first.adviser_name || '',
+    title: first.study_title || '',
+    labsSummary: labNames.join(', '),
+    isStudent: first.stakeholder_type === 'student',
+    isFaculty: first.stakeholder_type === 'faculty_staff',
+    isNonCvsu: first.stakeholder_type === 'non_cvsu',
+    items,
+  };
+};
+
+/**
+ * Build the plain-data object for a multi-laboratory batch — an array of
+ * `reservations` rows (each with its own laboratory_id/schedule and any
+ * `reservation_equipment` attached to it) that share the same batch_id
+ * because they were all submitted together in one request.
+ */
+export const buildLabBatchFormData = (rows) => {
+  const first = rows[0] || {};
+  const members = Array.isArray(first.members_list) ? first.members_list : [];
+  const allNames = [first.researcher_name, ...members].filter(Boolean).join(', ');
+
+  const items = rows.flatMap((r) => {
+    const equipmentItems = (r.reservation_equipment || []).map((re) => ({
+      particular: re.equipment?.name || 'Equipment',
+      quantity: String(re.quantity_reserved ?? ''),
+      knowledge: '',
+      startDate: formatDate(r.start_datetime),
+      endDate: formatDate(r.end_datetime),
+    }));
+
+    return [
+      {
+        particular: `Laboratory use — ${r.laboratories?.lab_name || ''}`,
+        quantity: '1',
+        knowledge: '',
+        startDate: formatDate(r.start_datetime),
+        endDate: formatDate(r.end_datetime),
+      },
+      ...equipmentItems,
+    ];
+  });
+
+  const labsSummary = [...new Set(rows.map((r) => r.laboratories?.lab_name).filter(Boolean))].join(', ');
+
+  return {
+    name: allNames,
+    contact: first.phone ? String(first.phone) : '',
+    email: first.email || '',
+    address: 'N/A',
+    unit: first.unit_college || '',
+    adviser: first.adviser_name || '',
+    title: first.study_title || '',
+    labsSummary,
+    isStudent: first.stakeholder_type === 'student',
+    isFaculty: first.stakeholder_type === 'faculty_staff',
+    isNonCvsu: first.stakeholder_type === 'non_cvsu',
+    items,
+  };
+};
+
 // ---- Low-level docx building helpers -------------------------------------
 
 const BORDER = { style: BorderStyle.SINGLE, size: 4, color: '000000' };
@@ -144,16 +230,20 @@ const labelValueRow = (label, value, { labelWidth = 32 } = {}) =>
 
 // ---- Header: Republic / University / Research Center title block --------
 
-const buildLetterhead = async () => {
-  let logoBuffer = null;
+const loadImageBuffer = async (src) => {
   try {
-    const res = await fetch(cvsuLogo);
-    logoBuffer = new Uint8Array(await res.arrayBuffer());
+    const res = await fetch(src);
+    return new Uint8Array(await res.arrayBuffer());
   } catch {
-    logoBuffer = null;
+    return null;
   }
+};
 
-  const logoCell = () =>
+const buildLetterhead = async () => {
+  const cvsuLogoBuffer = await loadImageBuffer(cvsuLogo);
+  const researchCenterLogoBuffer = await loadImageBuffer(researchCenterLogo);
+
+  const logoCell = (logoBuffer) =>
     cell(
       [
         logoBuffer
@@ -188,7 +278,7 @@ const buildLetterhead = async () => {
     width: { size: 100, type: WidthType.PERCENTAGE },
     rows: [
       new TableRow({
-        children: [logoCell(), centerTextCell(), logoCell()],
+        children: [logoCell(cvsuLogoBuffer), centerTextCell(), logoCell(researchCenterLogoBuffer)],
       }),
     ],
   });
@@ -215,8 +305,9 @@ const buildLetterhead = async () => {
 // ---- Stakeholder / facility tables (unchanged content, same as before) ---
 
 const buildStakeholderTable = (data) => {
+  const isCvsuStakeholder = data.isStudent || data.isFaculty;
   const stakeholderLine =
-    `CvSU Stakeholder:   ${data.isStudent ? CHECKED : UNCHECKED} Student   ` +
+    `${isCvsuStakeholder ? CHECKED : UNCHECKED} CvSU Stakeholder:   ${data.isStudent ? CHECKED : UNCHECKED} Student   ` +
     `${data.isFaculty ? CHECKED : UNCHECKED} Faculty/Staff        ` +
     `${data.isNonCvsu ? CHECKED : UNCHECKED} Non-CvSU Stakeholder:`;
 
@@ -240,13 +331,31 @@ const buildStakeholderTable = (data) => {
 };
 
 const buildEquipmentTable = (data) => {
-  const headerCells = ['Particulars', 'Quantity', 'Knowledge\n(Low/Medium/High/None)', 'Start Date', 'End Date', 'Remarks'];
+  const headerCells = [
+    'Particulars',
+    'Quantity',
+    'Knowledge\n(Low/Medium/High/None)',
+    'Start Date',
+    'End Date',
+    'Remarks\n(To be filled up by Research Center staff)',
+  ];
   const widths = [34, 10, 16, 13, 13, 14];
 
   const headerRow = new TableRow({
-    children: headerCells.map((h, i) =>
-      cell([textPara(h, { bold: true, align: AlignmentType.CENTER })], { width: widths[i], valign: VerticalAlign.CENTER })
-    ),
+    children: headerCells.map((h, i) => {
+      const lines = h.split('\n');
+      return cell(
+        lines.map((line, li) =>
+          textPara(line, {
+            bold: li === 0,
+            italics: li > 0,
+            size: li > 0 ? 14 : undefined,
+            align: AlignmentType.CENTER,
+          })
+        ),
+        { width: widths[i], valign: VerticalAlign.CENTER }
+      );
+    }),
   });
 
   const dataRows = data.items.map(
@@ -419,5 +528,38 @@ export const downloadRequestForm = async (reservation) => {
   const blob = await Packer.toBlob(doc);
 
   const filename = `UREC-QF-28_RC${String(reservation.id).padStart(5, '0')}_${(reservation.researcher_name || 'request').replace(/\s+/g, '_')}.docx`;
+  downloadBlob(blob, filename);
+};
+
+/**
+ * Build a "Facility/Equipment Use Request Form" for an equipment-only batch
+ * (one or more `equipment_reservations` rows sharing the same batch_id) and
+ * download it as a single .docx file, referenced by the lowest row ID in
+ * the batch.
+ */
+export const downloadEquipmentRequestForm = async (rows) => {
+  const data = buildEquipmentBatchFormData(rows);
+  const letterheadChildren = await buildLetterhead();
+  const doc = buildDocument(data, letterheadChildren);
+  const blob = await Packer.toBlob(doc);
+
+  const refId = Math.min(...rows.map((r) => r.id));
+  const filename = `UREC-QF-28_EQ${String(refId).padStart(5, '0')}_${(rows[0]?.researcher_name || 'request').replace(/\s+/g, '_')}.docx`;
+  downloadBlob(blob, filename);
+};
+
+/**
+ * Build a "Facility/Equipment Use Request Form" for a multi-laboratory batch
+ * (one or more `reservations` rows sharing the same batch_id) and download
+ * it as a single .docx file, referenced by the lowest row ID in the batch.
+ */
+export const downloadLabBatchRequestForm = async (rows) => {
+  const data = buildLabBatchFormData(rows);
+  const letterheadChildren = await buildLetterhead();
+  const doc = buildDocument(data, letterheadChildren);
+  const blob = await Packer.toBlob(doc);
+
+  const refId = Math.min(...rows.map((r) => r.id));
+  const filename = `UREC-QF-28_RC${String(refId).padStart(5, '0')}_${(rows[0]?.researcher_name || 'request').replace(/\s+/g, '_')}.docx`;
   downloadBlob(blob, filename);
 };

@@ -5,7 +5,7 @@ import { supabase } from '@/integrations/supabase/client';
  * every panel) via realtime, and in the /notifications-backed dashboards.
  * @param {Object} params
  * @param {string} params.userId - Recipient's auth user id.
- * @param {'reservation_approved'|'reservation_rejected'|'new_reservation'|'equipment_added'|'reservation_message'} params.type
+ * @param {'reservation_approved'|'reservation_rejected'|'new_reservation'|'equipment_added'|'equipment_removed'|'reservation_message'} params.type
  * @param {string} params.title
  * @param {string} [params.message]
  * @param {'lab'|'equipment'} [params.reservationType] - Lets NotificationBell jump straight to this reservation when clicked.
@@ -58,6 +58,21 @@ export const notifyReservationApproved = async ({ userId, label, reservationType
     type: 'reservation_approved',
     title: `${label} approved`,
     message: 'Your reservation has been approved.',
+    reservationType,
+    reservationId
+  });
+};
+
+/**
+ * Tells a researcher that a piece of equipment tied to one of their active
+ * reservations was removed from inventory by an admin/staff member.
+ */
+export const notifyEquipmentRemoved = async ({ userId, equipmentName, reservationType, reservationId }) => {
+  return createNotification({
+    userId,
+    type: 'equipment_removed',
+    title: `"${equipmentName}" was removed from inventory`,
+    message: 'This equipment was tied to one of your active reservations. Please check your reservation — you may need to choose a replacement or contact the lab.',
     reservationType,
     reservationId
   });
