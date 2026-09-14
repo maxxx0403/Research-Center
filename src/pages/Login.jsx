@@ -116,9 +116,15 @@ const Login = () => {
       setError(error.message);
       setLoading(false);
     } else if (data?.session) {
-      // Email confirmation is turned off in Supabase, so the account is
-      // active immediately — no need to tell the user to check their email.
-      // The auth state change will pick up the session and redirect them.
+      // Supabase returned an active session (this happens if "Confirm email"
+      // is turned OFF in Auth settings). We don't want registration to
+      // auto sign the user in, so immediately sign them back out and show
+      // the same "check your email" style message instead.
+      await supabase.auth.signOut();
+      setSuccess('Account created! You can now sign in.');
+      setIsRegister(false);
+      e.currentTarget.reset();
+      setSignupPassword('');
       setLoading(false);
     } else {
       setSuccess('Account created! Please check your email to confirm your account before signing in.');
