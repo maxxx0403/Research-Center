@@ -8,12 +8,27 @@ import {
   checkEquipmentAvailability,
 } from '@/lib/reservationUtils';
 import { validateReservationFields, sanitizeText } from '@/lib/validation';
-import { earliestBookableInput, earliestBookableLabel, manilaInputToISO, validateBookingDateTime, MIN_ADVANCE_DAYS } from '@/lib/timezone';
+import { isSundayInput, isOutsideHoursInput, isTooSoonInput, earliestBookableInput, earliestBookableLabel, manilaInputToISO, MIN_ADVANCE_DAYS } from '@/lib/timezone';
+
+const isClosedDay = (dateStr) => isSundayInput(dateStr);
+
+const isOutsideHours = (dateStr) => isOutsideHoursInput(dateStr);
 
 // `min` for datetime-local inputs: today + 7 days (Philippine Time).
 const getMinDatetimeLocal = () => earliestBookableInput();
 
-const validateDateTime = (start, end) => validateBookingDateTime(start, end);
+const validateDateTime = (start, end) => {
+  if (!start || !end) return 'Please fill in both start and end date/time.';
+  if (isTooSoonInput(start))
+    return `Reservations must be made at least ${MIN_ADVANCE_DAYS} days (1 week) in advance. Please choose a later date.`;
+  if (isClosedDay(start) || isClosedDay(end))
+    return 'Closed on Sundays. Please select Monday to Saturday only.';
+  if (isOutsideHours(start) || isOutsideHours(end))
+    return 'Operating hours are 7:00 AM to 6:00 PM only.';
+  if (new Date(manilaInputToISO(end)) <= new Date(manilaInputToISO(start)))
+    return 'End date/time must be after start date/time.';
+  return null;
+};
 
 const inputClass =
   'w-full px-4 py-3 border-2 border-border rounded-xl text-base bg-card text-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10';
@@ -443,7 +458,6 @@ const UserReserve = () => {
               <input
                 name="researcher_name"
                 required
-                placeholder="e.g. Juan Dela Cruz"
                 defaultValue={user?.user_metadata?.full_name || ''}
                 className={inputClass}
               />
@@ -463,7 +477,7 @@ const UserReserve = () => {
               <label className="block mb-1.5 font-semibold text-sm text-foreground">
                 Contact Number <span className="text-destructive">*</span>
               </label>
-              <input name="phone" type="tel" placeholder="e.g. 09171234567" required className={inputClass} />
+              <input name="phone" type="tel" placeholder="09XXXXXXXXX" required className={inputClass} />
             </div>
             <div>
               <label className="block mb-1.5 font-semibold text-sm text-foreground">
@@ -473,7 +487,6 @@ const UserReserve = () => {
                 name="email"
                 type="email"
                 required
-                placeholder="e.g. juandelacruz@cvsu.edu.ph"
                 defaultValue={user?.email || ''}
                 className={inputClass}
               />
@@ -522,13 +535,13 @@ const UserReserve = () => {
               <label className="block mb-1.5 font-semibold text-sm text-foreground">
                 Unit / College / Agency <span className="text-destructive">*</span>
               </label>
-              <input name="unit_college" required placeholder="e.g. College of Engineering and Information Technology" className={inputClass} />
+              <input name="unit_college" required className={inputClass} />
             </div>
             <div className="md:col-span-2">
               <label className="block mb-1.5 font-semibold text-sm text-foreground">
                 Adviser / Supervisor / Project Leader <span className="text-destructive">*</span>
               </label>
-              <input name="adviser_name" required placeholder="e.g. Dr. Maria Santos" className={inputClass} />
+              <input name="adviser_name" required placeholder="Enter Adviser / Supervisor name" className={inputClass} />
             </div>
           </div>
         </div>
@@ -543,7 +556,7 @@ const UserReserve = () => {
             <label className="block mb-1.5 font-semibold text-sm text-foreground">
               Title of the Study <span className="text-destructive">*</span>
             </label>
-            <input name="study_title" placeholder="e.g. Effect of Temperature on Microbial Growth in Soil Samples" className={inputClass} required />
+            <input name="study_title" className={inputClass} required />
           </div>
 
           <div className="mb-6">
@@ -580,7 +593,7 @@ const UserReserve = () => {
                           type="text"
                           value={member.name}
                           onChange={(e) => updateMember(idx, 'name', e.target.value)}
-                          placeholder="e.g. Maria Santos"
+                          placeholder="Enter full name…"
                           className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-card text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/10"
                         />
                       </td>
@@ -589,7 +602,7 @@ const UserReserve = () => {
                           type="text"
                           value={member.studentNumber}
                           onChange={(e) => updateMember(idx, 'studentNumber', e.target.value)}
-                          placeholder="e.g. 202302604"
+                          placeholder="Enter student number…"
                           className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-card text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/10"
                         />
                       </td>
@@ -763,12 +776,9 @@ const UserReserve = () => {
             </p>
 
             {validLabs.length === 0 ? (
-              <div className="flex items-start gap-2 rounded-xl border border-primary/30 bg-primary/5 px-3 py-2.5 text-xs text-foreground">
-                <Info className="w-4 h-4 flex-shrink-0 mt-0.5 text-primary" />
-                <p>
-                  Select at least one laboratory above first — only equipment available in your chosen lab(s) will be shown here.
-                </p>
-              </div>
+              <p className="text-xs text-warning bg-warning/10 border border-warning/25 rounded-lg px-3 py-2">
+                Select at least one laboratory above first — only equipment available in your chosen lab(s) will be shown here.
+              </p>
             ) : (
               <select
                 value={0}
@@ -892,7 +902,7 @@ const UserReserve = () => {
               <label className="block mb-1.5 font-semibold text-sm text-foreground">
                 Purpose <span className="text-destructive">*</span>
               </label>
-              <textarea name="purpose" required rows={3} placeholder="e.g. To conduct experiments for our thesis on water quality testing." className={inputClass + ' resize-y'} />
+              <textarea name="purpose" required rows={3} className={inputClass + ' resize-y'} />
             </div>
             <div>
               <label className="block mb-1.5 font-semibold text-sm text-foreground">
@@ -901,7 +911,6 @@ const UserReserve = () => {
               <textarea
                 name="special_requirements"
                 rows={2}
-                placeholder="e.g. Need extension cords and a fume hood (leave blank if none)"
                 className={inputClass + ' resize-y'}
               />
             </div>

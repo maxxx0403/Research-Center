@@ -13,11 +13,9 @@ import {
 } from '@/lib/reservationUtils';
 import { downloadRequestForm, downloadLabBatchRequestForm, downloadEquipmentRequestForm } from '@/lib/generateRequestForm';
 import ReservationMessagesPanel from '@/components/ReservationMessagesPanel';
-import { earliestBookableInput, earliestBookableLabel, manilaInputToISO, toManilaInputValue, validateBookingDateTime, MIN_ADVANCE_DAYS } from '@/lib/timezone';
 
 // Statuses a reservation can still be edited/cancelled from.
-// Only pending or rejected reservations can be edited. Once approved ('reserved') it is locked.
-const EDITABLE_STATUSES = ['pending', 'rejected'];
+const EDITABLE_STATUSES = ['pending', 'reserved', 'rejected'];
 // Priority order used to pick one badge status to represent a batch of
 // equipment rows that don't all share the same status (e.g. admin approved
 // one item in the batch but rejected another).
@@ -195,9 +193,8 @@ const UserReservations = () => {
   const startEditEq = (group) => {
     setEditingEqKey(group.key);
     setEditEqData({
-      start_datetime: toManilaInputValue(group.primary.start_datetime),
-      end_datetime: toManilaInputValue(group.primary.end_datetime),
-      originalStart: toManilaInputValue(group.primary.start_datetime),
+      start_datetime: group.primary.start_datetime,
+      end_datetime: group.primary.end_datetime,
       purpose: group.primary.purpose,
       special_requirements: group.primary.special_requirements,
       wasRejected: group.status === 'rejected',
@@ -212,41 +209,14 @@ const UserReservations = () => {
   const saveEditEq = async (group) => {
     setSavingEq(true);
     try {
-      const { wasRejected, originalStart, ...fields } = editEqData;
-      const dtError = validateBookingDateTime(fields.start_datetime, fields.end_datetime, {
-        skipAdvanceCheck: fields.start_datetime === originalStart,
-      });
-      if (dtError) {
-        alert(dtError);
-        setSavingEq(false);
-        return;
-      }
-      fields.start_datetime = manilaInputToISO(fields.start_datetime);
-      fields.end_datetime = manilaInputToISO(fields.end_datetime);
+      const { wasRejected, ...fields } = editEqData;
       // Only touch rows that are actually still editable — leave any
       // already-cancelled/in-use/completed items in a mixed batch alone.
       const targetIds = group.items.filter((it) => EDITABLE_STATUSES.includes(it.status)).map((it) => it.id);
-      if (targetIds.length === 0) {
-        alert('This reservation can no longer be edited because it has already been approved.');
-        setEditingEqKey(null);
-        setEditEqData({});
-        fetchData();
-        setSavingEq(false);
-        return;
-      }
       if (wasRejected) {
         await resubmitEquipmentReservations(targetIds, fields);
       } else {
-        const { data: updated, error: updErr } = await supabase
-          .from('equipment_reservations')
-          .update(fields)
-          .in('id', targetIds)
-          .in('status', ['pending', 'rejected'])
-          .select('id');
-        if (updErr) throw updErr;
-        if (!updated || updated.length === 0) {
-          alert('This reservation can no longer be edited because it has already been approved.');
-        }
+        await supabase.from('equipment_reservations').update(fields).in('id', targetIds);
       }
       setEditingEqKey(null);
       setEditEqData({});
@@ -273,9 +243,8 @@ const UserReservations = () => {
   const startEdit = (reservation) => {
     setEditingId(reservation.id);
     setEditData({
-      start_datetime: toManilaInputValue(reservation.start_datetime),
-      end_datetime: toManilaInputValue(reservation.end_datetime),
-      originalStart: toManilaInputValue(reservation.start_datetime),
+      start_datetime: reservation.start_datetime,
+      end_datetime: reservation.end_datetime,
       research_purpose: reservation.research_purpose,
       special_requirements: reservation.special_requirements,
       wasRejected: reservation.status === 'rejected',
@@ -290,17 +259,7 @@ const UserReservations = () => {
   const saveEdit = async (id) => {
     setSaving(true);
     try {
-      const { wasRejected, originalStart, ...fields } = editData;
-      const dtError = validateBookingDateTime(fields.start_datetime, fields.end_datetime, {
-        skipAdvanceCheck: fields.start_datetime === originalStart,
-      });
-      if (dtError) {
-        alert(dtError);
-        setSaving(false);
-        return;
-      }
-      fields.start_datetime = manilaInputToISO(fields.start_datetime);
-      fields.end_datetime = manilaInputToISO(fields.end_datetime);
+      const { wasRejected, ...fields } = editData;
       if (wasRejected) {
         // Editing a rejected reservation resubmits it for another review.
         await resubmitReservation(id, fields);
@@ -312,14 +271,7 @@ const UserReservations = () => {
       fetchData();
     } catch (error) {
       console.error('Error updating reservation:', error);
-      if (error?.code === 'PGRST116') {
-        alert('This reservation can no longer be edited because it has already been approved.');
-        setEditingId(null);
-        setEditData({});
-        fetchData();
-      } else {
-        alert('Failed to update reservation');
-      }
+      alert('Failed to update reservation');
     }
     setSaving(false);
   };
@@ -549,16 +501,12 @@ const UserReservations = () => {
                           {editData.wasRejected && (
                             <p className="text-xs text-muted-foreground -mt-2">Saving will resend this reservation for approval.</p>
                           )}
-                          <p className="text-xs text-muted-foreground -mt-2">
-                            Note: a new date must be at least 1 week ({MIN_ADVANCE_DAYS} days) in advance. Earliest available date: <span className="font-semibold text-foreground">{earliestBookableLabel()}</span>.
-                          </p>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
                               <label className="block text-xs font-semibold text-muted-foreground mb-1">Start Date & Time</label>
                               <input
                                 type="datetime-local"
-                                value={editData.start_datetime}
-                                min={earliestBookableInput()}
+                                value={editData.start_datetime?.slice(0, 16)}
                                 onChange={(e) => setEditData({ ...editData, start_datetime: e.target.value })}
                                 className="w-full px-3 py-2 border border-border rounded text-sm"
                               />
@@ -567,8 +515,7 @@ const UserReservations = () => {
                               <label className="block text-xs font-semibold text-muted-foreground mb-1">End Date & Time</label>
                               <input
                                 type="datetime-local"
-                                value={editData.end_datetime}
-                                min={editData.start_datetime || earliestBookableInput()}
+                                value={editData.end_datetime?.slice(0, 16)}
                                 onChange={(e) => setEditData({ ...editData, end_datetime: e.target.value })}
                                 className="w-full px-3 py-2 border border-border rounded text-sm"
                               />
@@ -578,7 +525,6 @@ const UserReservations = () => {
                               <textarea
                                 value={editData.research_purpose}
                                 onChange={(e) => setEditData({ ...editData, research_purpose: e.target.value })}
-                                placeholder="e.g. To conduct experiments for our thesis on water quality testing."
                                 rows={2}
                                 className="w-full px-3 py-2 border border-border rounded text-sm"
                               />
@@ -588,7 +534,6 @@ const UserReservations = () => {
                               <textarea
                                 value={editData.special_requirements}
                                 onChange={(e) => setEditData({ ...editData, special_requirements: e.target.value })}
-                                placeholder="e.g. Need extension cords and a fume hood (leave blank if none)"
                                 rows={1}
                                 className="w-full px-3 py-2 border border-border rounded text-sm"
                               />
@@ -758,16 +703,12 @@ const UserReservations = () => {
                           {editEqData.wasRejected && (
                             <p className="text-xs text-muted-foreground -mt-2">Saving will resend this request for approval.</p>
                           )}
-                          <p className="text-xs text-muted-foreground -mt-2">
-                            Note: a new date must be at least 1 week ({MIN_ADVANCE_DAYS} days) in advance. Earliest available date: <span className="font-semibold text-foreground">{earliestBookableLabel()}</span>.
-                          </p>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
                               <label className="block text-xs font-semibold text-muted-foreground mb-1">Start Date & Time</label>
                               <input
                                 type="datetime-local"
-                                value={editEqData.start_datetime}
-                                min={earliestBookableInput()}
+                                value={editEqData.start_datetime?.slice(0, 16)}
                                 onChange={(e) => setEditEqData({ ...editEqData, start_datetime: e.target.value })}
                                 className="w-full px-3 py-2 border border-border rounded text-sm"
                               />
@@ -776,8 +717,7 @@ const UserReservations = () => {
                               <label className="block text-xs font-semibold text-muted-foreground mb-1">End Date & Time</label>
                               <input
                                 type="datetime-local"
-                                value={editEqData.end_datetime}
-                                min={editEqData.start_datetime || earliestBookableInput()}
+                                value={editEqData.end_datetime?.slice(0, 16)}
                                 onChange={(e) => setEditEqData({ ...editEqData, end_datetime: e.target.value })}
                                 className="w-full px-3 py-2 border border-border rounded text-sm"
                               />
@@ -787,7 +727,6 @@ const UserReservations = () => {
                               <textarea
                                 value={editEqData.purpose}
                                 onChange={(e) => setEditEqData({ ...editEqData, purpose: e.target.value })}
-                                placeholder="e.g. To conduct experiments for our thesis on water quality testing."
                                 rows={2}
                                 className="w-full px-3 py-2 border border-border rounded text-sm"
                               />
@@ -797,7 +736,6 @@ const UserReservations = () => {
                               <textarea
                                 value={editEqData.special_requirements}
                                 onChange={(e) => setEditEqData({ ...editEqData, special_requirements: e.target.value })}
-                                placeholder="e.g. Need extension cords and a fume hood (leave blank if none)"
                                 rows={1}
                                 className="w-full px-3 py-2 border border-border rounded text-sm"
                               />

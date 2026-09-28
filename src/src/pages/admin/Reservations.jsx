@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, Fragment } from 'react';
-import { Check, X, Trash2, AlertCircle, FlaskConical, Package, Users, ChevronDown, ChevronUp, FileDown, MessageSquare, FileSpreadsheet } from 'lucide-react';
+import { Check, X, Trash2, AlertCircle, FlaskConical, Package, Users, ChevronDown, ChevronUp, FileDown, MessageSquare } from 'lucide-react';
 import StatusBadge from '@/components/StatusBadge';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -7,11 +7,8 @@ import { updateReservationApproval, updateReservationApprovalBatch } from '@/lib
 import { downloadRequestForm, downloadLabBatchRequestForm } from '@/lib/generateRequestForm';
 import { notifyReservationApproved, notifyReservationRejected } from '@/lib/notifications';
 import ReservationMessagesPanel from '@/components/ReservationMessagesPanel';
-import { logReservationAction } from '@/lib/activityLog';
-import { downloadReservationsExcel } from '@/lib/exportReservations';
 
 const STATUS_PRIORITY = ['rejected', 'pending', 'reserved', 'in_use', 'completed', 'cancelled'];
-const STATUS_VERBS = { reserved: 'Accepted', rejected: 'Rejected', cancelled: 'Cancelled', in_use: 'Marked in use:', completed: 'Marked completed:', pending: 'Set back to pending:' };
 
 // Groups rows that share a batch_id (i.e. were submitted together in one
 // multi-lab or multi-equipment request) into a single logical entry, so the
@@ -59,31 +56,6 @@ const Reservations = () => {
   const [eqLoading, setEqLoading] = useState(true);
 
   const [downloadingId, setDownloadingId] = useState(null);
-  const [exportingExcel, setExportingExcel] = useState(false);
-
-  // Exports every lab + equipment reservation (unfiltered) to one Excel file.
-  const handleExportExcel = async () => {
-    setExportingExcel(true);
-    try {
-      const [{ data: labData, error: labErr }, { data: eqData, error: eqErr }] = await Promise.all([
-        supabase
-          .from('reservations')
-          .select('id, researcher_name, email, phone, unit_college, adviser_name, study_title, stakeholder_type, status, approved_at, rejection_reason, start_datetime, end_datetime, members_list, batch_id, created_at, laboratories(lab_name, lab_code, floor), reservation_equipment(id, quantity_reserved, equipment(id, name, brand, model))')
-          .order('created_at', { ascending: false }),
-        supabase
-          .from('equipment_reservations')
-          .select('id, researcher_name, email, purpose, quantity_reserved, start_datetime, end_datetime, status, rejection_reason, created_at, batch_id, members_list, equipment(name, brand, laboratories(lab_code, floor))')
-          .order('created_at', { ascending: false }),
-      ]);
-      if (labErr || eqErr) throw labErr || eqErr;
-      await downloadReservationsExcel(labData || [], eqData || []);
-    } catch (err) {
-      console.error('Excel export failed:', err);
-      alert('Could not export reservations. Please try again.');
-    } finally {
-      setExportingExcel(false);
-    }
-  };
   const [messagingItem, setMessagingItem] = useState(null);
 
   const fetchLabData = async () => {
@@ -128,7 +100,6 @@ const Reservations = () => {
   // Lab actions
   const updateLabStatusBatch = async (ids, status) => {
     await supabase.from('reservations').update({ status }).in('id', ids);
-    logReservationAction({ userId: user.id, type: 'lab', verb: STATUS_VERBS[status] || `Changed status to "${status}" for`, items: labItems.filter((r) => ids.includes(r.id)) });
     setLabItems((prev) => prev.map((r) => ids.includes(r.id) ? { ...r, status } : r));
   };
 
@@ -144,7 +115,6 @@ const Reservations = () => {
         await updateReservationApproval(ids[0], 'reserved', user.id);
       }
       setLabItems((prev) => prev.map((r) => ids.includes(r.id) ? { ...r, status: 'reserved' } : r));
-      logReservationAction({ userId: user.id, type: 'lab', verb: 'Accepted', items: group.items });
       if (group.primary?.user_id) {
         notifyReservationApproved({ userId: group.primary.user_id, label });
       }
@@ -166,7 +136,6 @@ const Reservations = () => {
         await updateReservationApproval(ids[0], 'rejected', user.id, rejectionReason);
       }
       setLabItems((prev) => prev.map((r) => ids.includes(r.id) ? { ...r, status: 'rejected', rejection_reason: rejectionReason || null } : r));
-      logReservationAction({ userId: user.id, type: 'lab', verb: 'Rejected', items: group.items, reason: rejectionReason });
       if (group.primary?.user_id) {
         notifyReservationRejected({ userId: group.primary.user_id, label, reason: rejectionReason });
       }
@@ -184,7 +153,6 @@ const Reservations = () => {
     if (!confirm(`Delete ${label}?`)) return;
     await supabase.from('reservations').delete().in('id', ids);
     setLabItems((prev) => prev.filter((r) => !ids.includes(r.id)));
-    logReservationAction({ userId: user.id, type: 'lab', verb: 'Deleted', items: group.items });
   };
 
   const handleDownloadLabGroupForm = async (group) => {
@@ -222,7 +190,6 @@ const Reservations = () => {
       approved_at: new Date().toISOString()
     }).in('id', ids);
     setEqItems((prev) => prev.map((r) => ids.includes(r.id) ? { ...r, status: 'reserved' } : r));
-    logReservationAction({ userId: user.id, type: 'equipment', verb: 'Accepted', items: group.items });
     if (group.primary?.user_id) {
       notifyReservationApproved({ userId: group.primary.user_id, label });
     }
@@ -240,7 +207,6 @@ const Reservations = () => {
       rejection_reason: rejectionEqReason || null
     }).in('id', ids);
     setEqItems((prev) => prev.map((r) => ids.includes(r.id) ? { ...r, status: 'rejected', rejection_reason: rejectionEqReason || null } : r));
-    logReservationAction({ userId: user.id, type: 'equipment', verb: 'Rejected', items: group.items, reason: rejectionEqReason });
     if (group.primary?.user_id) {
       notifyReservationRejected({ userId: group.primary.user_id, label, reason: rejectionEqReason });
     }
@@ -250,7 +216,6 @@ const Reservations = () => {
 
   const updateEqStatusBatch = async (ids, status) => {
     await supabase.from('equipment_reservations').update({ status }).in('id', ids);
-    logReservationAction({ userId: user.id, type: 'equipment', verb: STATUS_VERBS[status] || `Changed status to "${status}" for`, items: eqItems.filter((r) => ids.includes(r.id)) });
     setEqItems((prev) => prev.map((r) => ids.includes(r.id) ? { ...r, status } : r));
   };
 
@@ -260,7 +225,6 @@ const Reservations = () => {
     if (!confirm(`Delete ${label}?`)) return;
     await supabase.from('equipment_reservations').delete().in('id', ids);
     setEqItems((prev) => prev.filter((r) => !ids.includes(r.id)));
-    logReservationAction({ userId: user.id, type: 'equipment', verb: 'Deleted', items: group.items });
   };
 
   const toggleMembers = (id) => setExpandedMembers(prev => ({ ...prev, [id]: !prev[id] }));
@@ -296,18 +260,6 @@ const Reservations = () => {
             </div>
             <button onClick={() => { setLabSearch(''); setLabFilterStatus(''); }} className="bg-muted text-muted-foreground border border-border px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer hover:bg-border transition-colors">Reset</button>
           </div>
-        </div>
-
-        {/* Excel export (all lab + equipment reservations) */}
-        <div className="flex justify-end">
-          <button
-            onClick={handleExportExcel}
-            disabled={exportingExcel || labLoading || eqLoading}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
-          >
-            <FileSpreadsheet className="w-4 h-4" />
-            {exportingExcel ? 'Exporting…' : 'Export All to Excel'}
-          </button>
         </div>
 
         {/* Lab table */}
@@ -432,8 +384,8 @@ const Reservations = () => {
                         <span className="text-muted-foreground italic">Multiple schedules</span>
                       ) : (
                         <>
-                          {new Date(r.start_datetime).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}<br />
-                          {new Date(r.start_datetime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} – {new Date(r.end_datetime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                          {new Date(r.start_datetime).toLocaleDateString('en-US', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric' })}<br />
+                          {new Date(r.start_datetime).toLocaleTimeString('en-US', { timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit' })} – {new Date(r.end_datetime).toLocaleTimeString('en-US', { timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit' })}
                         </>
                       )}
                     </td>
@@ -493,8 +445,8 @@ const Reservations = () => {
                                   <span className="font-semibold text-foreground">{it.laboratories?.lab_name}</span>{' '}
                                   <code className="bg-muted px-1 py-0.5 rounded text-[0.7rem]">{it.laboratories?.lab_code}</code>
                                   <span className="text-muted-foreground ml-2">
-                                    {new Date(it.start_datetime).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}{' '}
-                                    {new Date(it.start_datetime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} – {new Date(it.end_datetime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                                    {new Date(it.start_datetime).toLocaleDateString('en-US', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric' })}{' '}
+                                    {new Date(it.start_datetime).toLocaleTimeString('en-US', { timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit' })} – {new Date(it.end_datetime).toLocaleTimeString('en-US', { timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit' })}
                                   </span>
                                 </div>
                                 <StatusBadge status={it.status} />
@@ -635,8 +587,8 @@ const Reservations = () => {
                       )}
                     </td>
                     <td className="px-4 py-3 text-xs whitespace-nowrap">
-                      {new Date(r.start_datetime).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}<br />
-                      {new Date(r.start_datetime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} – {new Date(r.end_datetime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                      {new Date(r.start_datetime).toLocaleDateString('en-US', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric' })}<br />
+                      {new Date(r.start_datetime).toLocaleTimeString('en-US', { timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit' })} – {new Date(r.end_datetime).toLocaleTimeString('en-US', { timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit' })}
                     </td>
                     <td className="px-4 py-3">
                       <StatusBadge status={group.status} />

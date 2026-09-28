@@ -247,7 +247,6 @@ export const updateReservation = async (reservationId, updates) => {
       .from('reservations')
       .update(updates)
       .eq('id', reservationId)
-      .in('status', ['pending', 'rejected']) // approved/in-use/completed can't be edited
       .select()
       .single();
 
@@ -273,7 +272,6 @@ export const resubmitReservation = async (reservationId, updates = {}) => {
       .from('reservations')
       .update({ ...updates, status: 'pending', rejection_reason: null, approved_by: null, approved_at: null })
       .eq('id', reservationId)
-      .in('status', ['pending', 'rejected'])
       .select()
       .single();
 
@@ -383,7 +381,6 @@ export const resubmitEquipmentReservations = async (reservationIds, updates = {}
       .from('equipment_reservations')
       .update({ ...updates, status: 'pending', rejection_reason: null })
       .in('id', reservationIds)
-      .in('status', ['pending', 'rejected'])
       .select();
 
     if (error) throw error;

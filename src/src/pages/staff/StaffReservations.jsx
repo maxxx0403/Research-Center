@@ -7,7 +7,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { notifyReservationApproved, notifyReservationRejected } from '@/lib/notifications';
 import ReservationMessagesPanel from '@/components/ReservationMessagesPanel';
-import { logReservationAction } from '@/lib/activityLog';
 
 const STATUS_PRIORITY = ['rejected', 'pending', 'reserved', 'in_use', 'completed', 'cancelled'];
 
@@ -110,7 +109,7 @@ const StaffReservations = () => {
   g.items.some((it) => (it.equipment?.name || '').toLowerCase().includes(search.toLowerCase()))
   );
 
-  const fmt = (d) => new Date(d).toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  const fmt = (d) => new Date(d).toLocaleString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
   const toggleLabGroup = (key) => setExpandedLabGroups((prev) => ({ ...prev, [key]: !prev[key] }));
   const toggleEqGroup = (key) => setExpandedEqGroups((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -126,7 +125,6 @@ const StaffReservations = () => {
     if (error) { toast.error('Failed to approve: ' + error.message); return; }
     setLabItems((prev) => prev.map((r) => ids.includes(r.id) ? { ...r, status: 'reserved' } : r));
     toast.success('Reservation approved.');
-    logReservationAction({ userId: user.id, type: 'lab', verb: 'Accepted', items: group.items });
     if (group.primary?.user_id) notifyReservationApproved({ userId: group.primary.user_id, label, reservationType: 'lab', reservationId: ids[0] });
   };
 
@@ -145,7 +143,6 @@ const StaffReservations = () => {
     if (error) { toast.error('Failed to reject: ' + error.message); return; }
     setLabItems((prev) => prev.map((r) => ids.includes(r.id) ? { ...r, status: 'rejected', rejection_reason: rejectionReason || null } : r));
     toast.success('Reservation rejected.');
-    logReservationAction({ userId: user.id, type: 'lab', verb: 'Rejected', items: group.items, reason: rejectionReason });
     if (group.primary?.user_id) notifyReservationRejected({ userId: group.primary.user_id, label, reason: rejectionReason, reservationType: 'lab', reservationId: ids[0] });
     setRejectingId(null);
     setRejectionReason('');
@@ -162,7 +159,6 @@ const StaffReservations = () => {
     if (error) { toast.error('Failed to approve: ' + error.message); return; }
     setEqItems((prev) => prev.map((r) => ids.includes(r.id) ? { ...r, status: 'reserved' } : r));
     toast.success('Equipment reservation approved.');
-    logReservationAction({ userId: user.id, type: 'equipment', verb: 'Accepted', items: group.items });
     if (group.primary?.user_id) notifyReservationApproved({ userId: group.primary.user_id, label, reservationType: 'equipment', reservationId: ids[0] });
   };
 
@@ -181,7 +177,6 @@ const StaffReservations = () => {
     if (error) { toast.error('Failed to reject: ' + error.message); return; }
     setEqItems((prev) => prev.map((r) => ids.includes(r.id) ? { ...r, status: 'rejected', rejection_reason: rejectionEqReason || null } : r));
     toast.success('Equipment reservation rejected.');
-    logReservationAction({ userId: user.id, type: 'equipment', verb: 'Rejected', items: group.items, reason: rejectionEqReason });
     if (group.primary?.user_id) notifyReservationRejected({ userId: group.primary.user_id, label, reason: rejectionEqReason, reservationType: 'equipment', reservationId: ids[0] });
     setRejectingEqId(null);
     setRejectionEqReason('');

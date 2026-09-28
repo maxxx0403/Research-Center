@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { X, Send, AlertCircle } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
 import {
   getReservationMessages,
   sendReservationMessage,
@@ -25,6 +26,32 @@ const ReservationMessagesPanel = ({ reservationType, reservationId, label, rejec
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const bottomRef = useRef(null);
+  const [myName, setMyName] = useState('');
+
+  // Resolve the signed-in user's full name once. Prefer the name the user set
+  // in their account (same one shown in the top-right header), then fall back
+  // to the profiles table, then the email.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      let name = user?.user_metadata?.full_name?.trim() || '';
+      if (!name) {
+        try {
+          const { data } = await supabase
+            .from('profiles')
+            .select('full_name')
+            .eq('user_id', user.id)
+            .maybeSingle();
+          name = data?.full_name?.trim() || '';
+        } catch (error) {
+          console.error('Error loading profile name:', error);
+        }
+      }
+      if (!name) name = user?.email?.split('@')[0] || '';
+      if (!cancelled) setMyName(name);
+    })();
+    return () => { cancelled = true; };
+  }, [user?.id, user?.user_metadata?.full_name]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     let unsubscribe = () => {};
@@ -51,7 +78,7 @@ const ReservationMessagesPanel = ({ reservationType, reservationId, label, rejec
     if (!draft.trim() || sending) return;
     setSending(true);
     try {
-      await sendReservationMessage(reservationType, reservationId, user.id, role || 'user', draft);
+      await sendReservationMessage(reservationType, reservationId, user.id, role || 'user', draft, myName || null);
       setDraft('');
     } catch (error) {
       console.error('Error sending message:', error);
@@ -60,7 +87,8 @@ const ReservationMessagesPanel = ({ reservationType, reservationId, label, rejec
     setSending(false);
   };
 
-  const roleLabel = (r) => (r === 'admin' ? 'Admin' : r === 'staff' ? 'Staff' : 'Researcher');
+  // Only staff/admin get a role tag; regular users are shown by name only.
+  const roleLabel = (r) => (r === 'admin' ? 'Admin' : r === 'staff' ? 'Staff' : '');
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -95,11 +123,13 @@ const ReservationMessagesPanel = ({ reservationType, reservationId, label, rejec
           ) : (
             messages.map((m) => {
               const mine = m.sender_id === user.id;
+              // Own messages always show the current account name (fixes old messages saved with a stale name).
+              const displayName = mine ? (myName || m.sender_name) : m.sender_name;
               return (
                 <div key={m.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
                   <div className={`max-w-[80%] rounded-lg px-3 py-2 text-xs ${mine ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground'}`}>
                     <p className={`font-semibold mb-0.5 ${mine ? 'text-primary-foreground/80' : 'text-muted-foreground'}`}>
-                      {roleLabel(m.sender_role)}
+                      {[displayName, roleLabel(m.sender_role)].filter(Boolean).join(' · ') || 'User'}
                     </p>
                     <p className="whitespace-pre-wrap break-words">{m.message}</p>
                   </div>

@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { Search, Plus, X, Pencil } from 'lucide-react';
-import StatusBadge from '@/components/StatusBadge';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
@@ -117,15 +116,14 @@ const StaffEquipment = () => {
               <th className="px-4 py-2.5 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Name</th>
               <th className="px-4 py-2.5 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Laboratory</th>
               <th className="px-4 py-2.5 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Qty Available</th>
-              <th className="px-4 py-2.5 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Status</th>
               <th className="px-4 py-2.5 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Actions</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={5} className="text-center py-10 text-muted-foreground text-xs">Loading...</td></tr>
+              <tr><td colSpan={4} className="text-center py-10 text-muted-foreground text-xs">Loading...</td></tr>
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={5} className="text-center py-10 text-muted-foreground text-xs">No equipment found for your assigned rooms.</td></tr>
+              <tr><td colSpan={4} className="text-center py-10 text-muted-foreground text-xs">No equipment found for your assigned rooms.</td></tr>
             ) : filtered.map((e) =>
             <tr key={e.id} className="border-b border-muted last:border-0">
                 <td className="px-4 py-3">
@@ -134,7 +132,6 @@ const StaffEquipment = () => {
                 </td>
                 <td className="px-4 py-3 text-muted-foreground">{e.laboratories?.lab_code || '—'}</td>
                 <td className="px-4 py-3">{e.available_quantity} / {e.quantity}</td>
-                <td className="px-4 py-3"><StatusBadge status={e.status} /></td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2">
                     <select

@@ -23,21 +23,27 @@ export const getReservationMessages = async (reservationType, reservationId) => 
  * @param {string} senderId
  * @param {'user'|'staff'|'admin'} senderRole
  * @param {string} message
+ * @param {string} [senderName] - sender's full name, shown in the chat
  */
-export const sendReservationMessage = async (reservationType, reservationId, senderId, senderRole, message) => {
+export const sendReservationMessage = async (reservationType, reservationId, senderId, senderRole, message, senderName = null) => {
   const trimmed = message.trim();
   if (!trimmed) return null;
-  const { data, error } = await supabase
+  const row = {
+    reservation_type: reservationType,
+    reservation_id: reservationId,
+    sender_id: senderId,
+    sender_role: senderRole,
+    message: trimmed
+  };
+  let { data, error } = await supabase
     .from('reservation_messages')
-    .insert({
-      reservation_type: reservationType,
-      reservation_id: reservationId,
-      sender_id: senderId,
-      sender_role: senderRole,
-      message: trimmed
-    })
+    .insert(senderName ? { ...row, sender_name: senderName } : row)
     .select()
     .single();
+  // If the `sender_name` column hasn't been added yet, still send the message.
+  if (error && senderName && (error.code === 'PGRST204' || error.code === '42703' || /sender_name/i.test(error.message || ''))) {
+    ({ data, error } = await supabase.from('reservation_messages').insert(row).select().single());
+  }
   if (error) throw error;
   return data;
 };

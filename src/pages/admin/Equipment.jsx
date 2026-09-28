@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Search, Plus, X, Pencil, Trash2, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-import StatusBadge from '@/components/StatusBadge';
 import { toast } from 'sonner';
 import { notifyEquipmentRemoved } from '@/lib/notifications';
 
@@ -176,13 +175,12 @@ const AdminEquipment = () => {
                 <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Model</th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Laboratory</th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Qty</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Status</th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody>
               {loading ?
-                <tr><td colSpan={7} className="text-center py-12 text-muted-foreground">Loading…</td></tr> :
+                <tr><td colSpan={6} className="text-center py-12 text-muted-foreground">Loading…</td></tr> :
                 filtered.length ? filtered.map((e) =>
                   <tr key={e.id} className="border-b border-muted hover:bg-muted/30">
                     <td className="px-4 py-3 font-semibold">{e.name}</td>
@@ -193,7 +191,6 @@ const AdminEquipment = () => {
                       <div className="text-xs text-muted-foreground mt-0.5">{e.laboratories?.lab_name}</div>
                     </td>
                     <td className="px-4 py-3 text-sm font-semibold">{e.quantity}</td>
-                    <td className="px-4 py-3"><StatusBadge status={e.status} /></td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <select
@@ -221,7 +218,7 @@ const AdminEquipment = () => {
                     </td>
                   </tr>
                 ) :
-                <tr><td colSpan={7} className="text-center py-12 text-muted-foreground">No equipment found</td></tr>
+                <tr><td colSpan={6} className="text-center py-12 text-muted-foreground">No equipment found</td></tr>
               }
             </tbody>
           </table>
