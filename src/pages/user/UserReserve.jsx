@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useSearchParams, Link } from 'react-router-dom';
+import { useSearchParams, useLocation, Link } from 'react-router-dom';
 import { FlaskConical, Info, CheckCircle2, Package, X, Plus, Trash2, Clock, Users, AlertCircle, Hash } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -22,22 +22,31 @@ const UserReserve = () => {
   const { user } = useAuth();
   const [searchParams] = useSearchParams();
   const preLabId = Number(searchParams.get('lab_id') || 0);
+  const location = useLocation();
+  // "Reserve Again": details of an earlier reservation, passed from My Reservations.
+  const [prefill, setPrefill] = useState(() =>
+    location.state?.prefill?.kind === 'lab' ? location.state.prefill : null
+  );
 
   const [labs, setLabs] = useState([]);
   const [equipment, setEquipment] = useState([]);
 
   const [tempId] = useState(() => `RC-TMP-${Math.floor(100000 + Math.random() * 900000)}`);
 
-  const [selectedLabs, setSelectedLabs] = useState([
-    { labId: preLabId || 0, startDatetime: '', endDatetime: '' },
-  ]);
-  const [selectedEquipments, setSelectedEquipments] = useState([]);
+  const [selectedLabs, setSelectedLabs] = useState(() =>
+    prefill?.labs?.length
+      ? prefill.labs.map((l) => ({ labId: l.labId, startDatetime: '', endDatetime: '' }))
+      : [{ labId: preLabId || 0, startDatetime: '', endDatetime: '' }]
+  );
+  const [selectedEquipments, setSelectedEquipments] = useState(() =>
+    prefill?.equipments ? prefill.equipments.map((e) => ({ ...e })) : []
+  );
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [reservationId, setReservationId] = useState(0);
-  const [stakeholderType, setStakeholderType] = useState('');
-  const [members, setMembers] = useState([{ name: '', studentNumber: '' }]);
+  const [stakeholderType, setStakeholderType] = useState(prefill?.stakeholder_type || '');
+  const [members, setMembers] = useState(prefill?.members?.length ? prefill.members : [{ name: '', studentNumber: '' }]);
 
   useEffect(() => {
     Promise.all([
@@ -50,6 +59,13 @@ const UserReserve = () => {
     ]).then(([labRes, eqRes]) => {
       setLabs(labRes.data || []);
       setEquipment(eqRes.data || []);
+      if (prefill) {
+        // Drop anything from the old reservation that can no longer be booked.
+        const labIds = new Set((labRes.data || []).map((l) => l.id));
+        const eqIds = new Set((eqRes.data || []).map((e) => e.id));
+        setSelectedLabs((prev) => prev.map((l) => (l.labId && !labIds.has(l.labId) ? { ...l, labId: 0 } : l)));
+        setSelectedEquipments((prev) => prev.filter((e) => eqIds.has(e.equipmentId)));
+      }
     });
   }, []);
 
@@ -343,6 +359,7 @@ const UserReserve = () => {
   }, [JSON.stringify(validLabIds), equipment.length]);
 
   const resetForm = () => {
+    setPrefill(null);
     setSuccess(false);
     setReservationId(0);
     setSelectedEquipments([]);
@@ -430,6 +447,18 @@ const UserReserve = () => {
           </div>
         )}
 
+        {prefill && (
+          <div className="bg-primary/10 border-2 border-primary/20 text-foreground rounded-xl p-4 text-sm flex items-start gap-3">
+            <Info className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold text-primary">Reserving again from {prefill.sourceLabel}</p>
+              <p className="text-muted-foreground mt-0.5">
+                Your previous details were filled in for you. Choose a new schedule and edit anything that changed, then submit. This will be saved as a new request.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* STAKEHOLDER INFORMATION */}
         <div>
           <h3 className="font-heading text-sm font-bold text-primary uppercase tracking-wider border-b-2 border-primary/20 pb-2 mb-5">
@@ -463,7 +492,7 @@ const UserReserve = () => {
               <label className="block mb-1.5 font-semibold text-sm text-foreground">
                 Contact Number <span className="text-destructive">*</span>
               </label>
-              <input name="phone" type="tel" placeholder="e.g. 09171234567" required className={inputClass} />
+              <input name="phone" type="tel" defaultValue={prefill?.phone || ''} placeholder="e.g. 09171234567" required className={inputClass} />
             </div>
             <div>
               <label className="block mb-1.5 font-semibold text-sm text-foreground">
@@ -522,13 +551,13 @@ const UserReserve = () => {
               <label className="block mb-1.5 font-semibold text-sm text-foreground">
                 Unit / College / Agency <span className="text-destructive">*</span>
               </label>
-              <input name="unit_college" required placeholder="e.g. College of Engineering and Information Technology" className={inputClass} />
+              <input name="unit_college" required defaultValue={prefill?.unit_college || ''} placeholder="e.g. College of Engineering and Information Technology" className={inputClass} />
             </div>
             <div className="md:col-span-2">
               <label className="block mb-1.5 font-semibold text-sm text-foreground">
                 Adviser / Supervisor / Project Leader <span className="text-destructive">*</span>
               </label>
-              <input name="adviser_name" required placeholder="e.g. Dr. Maria Santos" className={inputClass} />
+              <input name="adviser_name" required defaultValue={prefill?.adviser_name || ''} placeholder="e.g. Dr. Maria Santos" className={inputClass} />
             </div>
           </div>
         </div>
@@ -543,7 +572,7 @@ const UserReserve = () => {
             <label className="block mb-1.5 font-semibold text-sm text-foreground">
               Title of the Study <span className="text-destructive">*</span>
             </label>
-            <input name="study_title" placeholder="e.g. Effect of Temperature on Microbial Growth in Soil Samples" className={inputClass} required />
+            <input name="study_title" defaultValue={prefill?.study_title || ''} placeholder="e.g. Effect of Temperature on Microbial Growth in Soil Samples" className={inputClass} required />
           </div>
 
           <div className="mb-6">
@@ -892,7 +921,7 @@ const UserReserve = () => {
               <label className="block mb-1.5 font-semibold text-sm text-foreground">
                 Purpose <span className="text-destructive">*</span>
               </label>
-              <textarea name="purpose" required rows={3} placeholder="e.g. To conduct experiments for our thesis on water quality testing." className={inputClass + ' resize-y'} />
+              <textarea name="purpose" required rows={3} defaultValue={prefill?.purpose || ''} placeholder="e.g. To conduct experiments for our thesis on water quality testing." className={inputClass + ' resize-y'} />
             </div>
             <div>
               <label className="block mb-1.5 font-semibold text-sm text-foreground">
@@ -900,6 +929,7 @@ const UserReserve = () => {
               </label>
               <textarea
                 name="special_requirements"
+                defaultValue={prefill?.special_requirements || ''}
                 rows={2}
                 placeholder="e.g. Need extension cords and a fume hood (leave blank if none)"
                 className={inputClass + ' resize-y'}

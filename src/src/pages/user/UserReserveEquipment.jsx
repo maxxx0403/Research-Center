@@ -1,30 +1,15 @@
 import { useState, useEffect } from 'react';
-import { useSearchParams, Link } from 'react-router-dom';
+import { useSearchParams, useLocation, Link } from 'react-router-dom';
 import { Package, CheckCircle2, Info, Clock, Users, Plus, X, AlertCircle, Hash } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { validateReservationFields, sanitizeText } from '@/lib/validation';
-import { isSundayInput, isOutsideHoursInput, isTooSoonInput, earliestBookableInput, earliestBookableLabel, manilaInputToISO, MIN_ADVANCE_DAYS } from '@/lib/timezone';
-
-const isClosedDay = (dateStr) => isSundayInput(dateStr);
-
-const isOutsideHours = (dateStr) => isOutsideHoursInput(dateStr);
+import { earliestBookableInput, earliestBookableLabel, manilaInputToISO, validateBookingDateTime, MIN_ADVANCE_DAYS } from '@/lib/timezone';
 
 // `min` for datetime-local inputs: today + 7 days (Philippine Time).
 const getMinDatetimeLocal = () => earliestBookableInput();
 
-const validateDateTime = (start, end) => {
-  if (!start || !end) return 'Please fill in both start and end date/time.';
-  if (isTooSoonInput(start))
-    return `Reservations must be made at least ${MIN_ADVANCE_DAYS} days (1 week) in advance. Please choose a later date.`;
-  if (isClosedDay(start) || isClosedDay(end))
-    return 'Closed on Sundays. Please select Monday to Saturday only.';
-  if (isOutsideHours(start) || isOutsideHours(end))
-    return 'Operating hours are 7:00 AM to 6:00 PM only.';
-  if (new Date(manilaInputToISO(end)) <= new Date(manilaInputToISO(start)))
-    return 'End date/time must be after start date/time.';
-  return null;
-};
+const validateDateTime = (start, end) => validateBookingDateTime(start, end);
 
 const inputClass =
   'w-full px-4 py-3 border-2 border-border rounded-xl text-base bg-card text-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10';
@@ -35,13 +20,22 @@ const UserReserveEquipment = () => {
   const { user } = useAuth();
   const [searchParams] = useSearchParams();
   const preId = Number(searchParams.get('equipment_id') || 0);
+  const location = useLocation();
+  // "Reserve Again": details of an earlier reservation, passed from My Reservations.
+  const [prefill, setPrefill] = useState(() =>
+    location.state?.prefill?.kind === 'equipment' ? location.state.prefill : null
+  );
 
   const [equipment, setEquipment] = useState([]);
-  const [items, setItems] = useState([emptyItem(preId)]);
+  const [items, setItems] = useState(() =>
+    prefill?.equipments?.length
+      ? prefill.equipments.map((e) => ({ equipmentId: e.equipmentId, quantity: e.quantity }))
+      : [emptyItem(preId)]
+  );
   const [startDatetime, setStartDatetime] = useState('');
   const [endDatetime, setEndDatetime] = useState('');
-  const [stakeholderType, setStakeholderType] = useState('');
-  const [members, setMembers] = useState([{ name: '', studentNumber: '' }]);
+  const [stakeholderType, setStakeholderType] = useState(prefill?.stakeholder_type || '');
+  const [members, setMembers] = useState(prefill?.members?.length ? prefill.members : [{ name: '', studentNumber: '' }]);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -55,7 +49,17 @@ const UserReserveEquipment = () => {
       .select('*, laboratories(lab_name, lab_code)')
       .in('status', ['available', 'maintenance'])
       .order('name')
-      .then(({ data }) => setEquipment(data || []));
+      .then(({ data }) => {
+        setEquipment(data || []);
+        if (prefill) {
+          // Drop equipment from the old reservation that can no longer be booked.
+          const ids = new Set((data || []).map((e) => e.id));
+          setItems((prev) => {
+            const kept = prev.filter((it) => ids.has(it.equipmentId));
+            return kept.length ? kept : [emptyItem()];
+          });
+        }
+      });
   }, []);
 
   const triggerError = (msg) => {
@@ -211,6 +215,7 @@ const UserReserveEquipment = () => {
   };
 
   const resetForm = () => {
+    setPrefill(null);
     setSuccess(false);
     setReservationIds([]);
     setItems([emptyItem()]);
@@ -304,6 +309,18 @@ const UserReserveEquipment = () => {
           </div>
         )}
 
+        {prefill && (
+          <div className="bg-primary/10 border-2 border-primary/20 text-foreground rounded-xl p-4 text-sm flex items-start gap-3">
+            <Info className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold text-primary">Reserving again from {prefill.sourceLabel}</p>
+              <p className="text-muted-foreground mt-0.5">
+                Your previous details were filled in for you. Choose a new schedule and edit anything that changed, then submit. This will be saved as a new request.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* STAKEHOLDER INFORMATION */}
         <div>
           <h3 className="font-heading text-sm font-bold text-primary uppercase tracking-wider border-b-2 border-primary/20 pb-2 mb-5">
@@ -317,6 +334,7 @@ const UserReserveEquipment = () => {
               <input
                 name="researcher_name"
                 required
+                placeholder="e.g. Juan Dela Cruz"
                 defaultValue={user?.user_metadata?.full_name || ''}
                 className={inputClass}
               />
@@ -336,7 +354,7 @@ const UserReserveEquipment = () => {
               <label className="block mb-1.5 font-semibold text-sm text-foreground">
                 Contact Number <span className="text-destructive">*</span>
               </label>
-              <input name="phone" type="tel" placeholder="09XXXXXXXXX" required className={inputClass} />
+              <input name="phone" type="tel" defaultValue={prefill?.phone || ''} placeholder="e.g. 09171234567" required className={inputClass} />
             </div>
             <div>
               <label className="block mb-1.5 font-semibold text-sm text-foreground">
@@ -346,6 +364,7 @@ const UserReserveEquipment = () => {
                 name="email"
                 type="email"
                 required
+                placeholder="e.g. juandelacruz@cvsu.edu.ph"
                 defaultValue={user?.email || ''}
                 className={inputClass}
               />
@@ -394,13 +413,13 @@ const UserReserveEquipment = () => {
               <label className="block mb-1.5 font-semibold text-sm text-foreground">
                 Unit / College / Agency <span className="text-destructive">*</span>
               </label>
-              <input name="unit_college" required className={inputClass} />
+              <input name="unit_college" required defaultValue={prefill?.unit_college || ''} placeholder="e.g. College of Engineering and Information Technology" className={inputClass} />
             </div>
             <div className="md:col-span-2">
               <label className="block mb-1.5 font-semibold text-sm text-foreground">
                 Adviser / Supervisor / Project Leader <span className="text-destructive">*</span>
               </label>
-              <input name="adviser_name" required placeholder="Enter Adviser / Supervisor name" className={inputClass} />
+              <input name="adviser_name" required defaultValue={prefill?.adviser_name || ''} placeholder="e.g. Dr. Maria Santos" className={inputClass} />
             </div>
           </div>
         </div>
@@ -415,7 +434,7 @@ const UserReserveEquipment = () => {
             <label className="block mb-1.5 font-semibold text-sm text-foreground">
               Title of the Study <span className="text-destructive">*</span>
             </label>
-            <input name="study_title" className={inputClass} required />
+            <input name="study_title" defaultValue={prefill?.study_title || ''} placeholder="e.g. Effect of Temperature on Microbial Growth in Soil Samples" className={inputClass} required />
           </div>
 
           <div className="mb-6">
@@ -452,7 +471,7 @@ const UserReserveEquipment = () => {
                           type="text"
                           value={member.name}
                           onChange={(e) => updateMember(idx, 'name', e.target.value)}
-                          placeholder="Enter full name…"
+                          placeholder="e.g. Maria Santos"
                           className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-card text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/10"
                         />
                       </td>
@@ -461,7 +480,7 @@ const UserReserveEquipment = () => {
                           type="text"
                           value={member.studentNumber}
                           onChange={(e) => updateMember(idx, 'studentNumber', e.target.value)}
-                          placeholder="Enter student number…"
+                          placeholder="e.g. 202302604"
                           className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-card text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/10"
                         />
                       </td>
@@ -631,7 +650,7 @@ const UserReserveEquipment = () => {
               <label className="block mb-1.5 font-semibold text-sm text-foreground">
                 Purpose <span className="text-destructive">*</span>
               </label>
-              <textarea name="purpose" required rows={3} className={inputClass + ' resize-y'} />
+              <textarea name="purpose" required rows={3} defaultValue={prefill?.purpose || ''} placeholder="e.g. To conduct experiments for our thesis on water quality testing." className={inputClass + ' resize-y'} />
             </div>
             <div>
               <label className="block mb-1.5 font-semibold text-sm text-foreground">
@@ -639,7 +658,9 @@ const UserReserveEquipment = () => {
               </label>
               <textarea
                 name="special_requirements"
+                defaultValue={prefill?.special_requirements || ''}
                 rows={2}
+                placeholder="e.g. Need extension cords and a fume hood (leave blank if none)"
                 className={inputClass + ' resize-y'}
               />
             </div>

@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { Edit2, Trash2, X, Check, ChevronDown, ChevronUp, Package, FlaskConical, FileDown, MessageSquare } from 'lucide-react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
+import { Edit2, Trash2, X, Check, ChevronDown, ChevronUp, Package, FlaskConical, FileDown, MessageSquare, RotateCcw } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import StatusBadge from '@/components/StatusBadge';
@@ -13,6 +13,7 @@ import {
 } from '@/lib/reservationUtils';
 import { downloadRequestForm, downloadLabBatchRequestForm, downloadEquipmentRequestForm } from '@/lib/generateRequestForm';
 import ReservationMessagesPanel from '@/components/ReservationMessagesPanel';
+import { buildLabPrefill, buildEquipmentPrefill } from '@/lib/reserveAgain';
 import { earliestBookableInput, earliestBookableLabel, manilaInputToISO, toManilaInputValue, validateBookingDateTime, MIN_ADVANCE_DAYS } from '@/lib/timezone';
 
 // Statuses a reservation can still be edited/cancelled from.
@@ -25,6 +26,7 @@ const STATUS_PRIORITY = ['rejected', 'pending', 'reserved', 'in_use', 'completed
 
 const UserReservations = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [reservations, setReservations] = useState([]);
   const [eqReservations, setEqReservations] = useState([]);
@@ -33,6 +35,7 @@ const UserReservations = () => {
   const [editData, setEditData] = useState({});
   const [saving, setSaving] = useState(false);
   const [expandedEquipment, setExpandedEquipment] = useState({});
+  const [expandedReasons, setExpandedReasons] = useState({});
   const [downloadingId, setDownloadingId] = useState(null);
   const [messagingItem, setMessagingItem] = useState(null);
   const [highlightId, setHighlightId] = useState(null);
@@ -136,6 +139,16 @@ const UserReservations = () => {
     // Clear the param so re-navigating doesn't keep re-triggering this.
     setSearchParams({}, { replace: true });
   }, [loading, searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // "Reserve Again": open the normal reserve form pre-filled with this earlier
+  // (approved) reservation. Schedule is left blank; submitting saves a new request.
+  const handleReserveAgainLab = (group) => {
+    navigate('/user/reserve', { state: { prefill: buildLabPrefill(group) } });
+  };
+
+  const handleReserveAgainEq = (group) => {
+    navigate('/user/reserve-equipment', { state: { prefill: buildEquipmentPrefill(group) } });
+  };
 
   const handleCancelReservation = async (id) => {
     if (!confirm('Cancel this reservation?')) return;
@@ -324,6 +337,8 @@ const UserReservations = () => {
     setSaving(false);
   };
 
+  const toggleReason = (key) => setExpandedReasons((prev) => ({ ...prev, [key]: !prev[key] }));
+
   const toggleEquipment = (id) => {
     setExpandedEquipment(prev => ({ ...prev, [id]: !prev[id] }));
   };
@@ -381,7 +396,7 @@ const UserReservations = () => {
                       {isBatch ? (
                         <button
                           onClick={() => toggleLabGroup(group.key)}
-                          className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary bg-primary/10 border border-primary/20 px-2.5 py-1 rounded-full hover:bg-primary/20 transition-colors cursor-pointer"
+                          className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-semibold text-primary bg-primary/10 border border-primary/20 px-2.5 py-1 rounded-full hover:bg-primary/20 transition-colors cursor-pointer"
                         >
                           <FlaskConical className="w-3 h-3" />
                           {group.items.length} laboratories
@@ -400,7 +415,7 @@ const UserReservations = () => {
                       ) : hasEquipment ? (
                         <button
                           onClick={() => toggleEquipment(primary.id)}
-                          className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary bg-primary/10 border border-primary/20 px-2.5 py-1 rounded-full hover:bg-primary/20 transition-colors cursor-pointer"
+                          className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-semibold text-primary bg-primary/10 border border-primary/20 px-2.5 py-1 rounded-full hover:bg-primary/20 transition-colors cursor-pointer"
                         >
                           <Package className="w-3 h-3" />
                           {primary.reservation_equipment.length} item{primary.reservation_equipment.length > 1 ? 's' : ''}
@@ -425,41 +440,70 @@ const UserReservations = () => {
                       <StatusBadge status={group.status} />
                       {group.mixedStatus && <p className="text-[0.65rem] text-muted-foreground mt-1">Mixed — see breakdown</p>}
                       {group.rejectionReasons.length > 0 && (
-                        <p className="text-[0.7rem] text-destructive mt-1 max-w-[160px]">{group.rejectionReasons.join('; ')}</p>
+                        <div className="mt-1.5">
+                          <button
+                            onClick={() => toggleReason('lab-' + group.key)}
+                            className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-semibold text-primary bg-primary/10 border border-primary/20 px-2.5 py-1 rounded-full hover:bg-primary/20 transition-colors cursor-pointer"
+                          >
+                            <MessageSquare className="w-3 h-3" />
+                            View reason
+                            {expandedReasons['lab-' + group.key] ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                          </button>
+                          {expandedReasons['lab-' + group.key] && (
+                            <p className="mt-1.5 text-[0.7rem] text-destructive bg-destructive/5 border border-destructive/20 rounded-lg px-2.5 py-1.5 max-w-[180px] whitespace-normal break-words">
+                              {group.rejectionReasons.join('; ')}
+                            </p>
+                          )}
+                        </div>
                       )}
                     </td>
-                    <td className="px-4 py-3 flex gap-2 flex-wrap">
-                      {!isBatch && EDITABLE_STATUSES.includes(primary.status) && (
+                    <td className="px-4 py-3 align-middle">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {!isBatch && EDITABLE_STATUSES.includes(primary.status) && (
+                          <button
+                            title={primary.status === 'rejected' ? 'Edit & Resubmit' : 'Edit'} aria-label={primary.status === 'rejected' ? 'Edit & Resubmit' : 'Edit'}
+                            onClick={() => startEdit(primary)}
+                            className="bg-primary/10 text-primary border border-primary/20 px-2 py-1 rounded text-xs font-semibold cursor-pointer hover:bg-primary hover:text-primary-foreground transition-colors inline-flex items-center"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        {(group.status === 'pending' || group.status === 'reserved') && (
+                          <button
+                            title="Cancel reservation" aria-label="Cancel reservation"
+                            onClick={() => (isBatch ? handleCancelLabGroup(group) : handleCancelReservation(primary.id))}
+                            className="bg-destructive text-destructive-foreground px-2 py-1 rounded text-xs font-semibold border-none cursor-pointer hover:brightness-110 inline-flex items-center"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        {['reserved', 'in_use', 'completed'].includes(group.status) && (
+                          <button
+                            title={downloadingId === primary.id ? 'Preparing…' : 'Download Form'} aria-label={downloadingId === primary.id ? 'Preparing…' : 'Download Form'}
+                            onClick={() => (isBatch ? handleDownloadLabGroupForm(group) : handleDownloadForm(primary))}
+                            disabled={downloadingId === primary.id}
+                            className="bg-success/10 text-success border border-success/20 px-2 py-1 rounded text-xs font-semibold cursor-pointer hover:bg-success hover:text-success-foreground transition-colors inline-flex items-center disabled:opacity-50"
+                          >
+                            <FileDown className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        {['reserved', 'in_use', 'completed'].includes(group.status) && (
+                          <button
+                            title="Reserve Again" aria-label="Reserve Again"
+                            onClick={() => handleReserveAgainLab(group)}
+                            className="bg-primary/10 text-primary border border-primary/20 px-2 py-1 rounded text-xs font-semibold cursor-pointer hover:bg-primary hover:text-primary-foreground transition-colors inline-flex items-center"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                         <button
-                          onClick={() => startEdit(primary)}
-                          className="bg-primary/10 text-primary border border-primary/20 px-3 py-1 rounded text-xs font-semibold cursor-pointer hover:bg-primary hover:text-primary-foreground transition-colors inline-flex items-center gap-1"
+                          title={group.status === 'rejected' ? 'Ask why' : 'Message'} aria-label={group.status === 'rejected' ? 'Ask why' : 'Message'}
+                          onClick={() => setMessagingItem({ type: 'lab', id: primary.id, label: `Reservation #RC${String(primary.id).padStart(5, '0')}`, reason: group.rejectionReasons[0] })}
+                          className={`px-2 py-1 rounded text-xs font-semibold cursor-pointer transition-colors inline-flex items-center ${group.status === 'rejected' ? 'bg-destructive text-destructive-foreground hover:brightness-110' : 'bg-primary/10 text-primary border border-primary/20 hover:bg-primary hover:text-primary-foreground'}`}
                         >
-                          <Edit2 className="w-3 h-3" /> {primary.status === 'rejected' ? 'Edit & Resubmit' : 'Edit'}
+                          <MessageSquare className="w-3.5 h-3.5" />
                         </button>
-                      )}
-                      {(group.status === 'pending' || group.status === 'reserved') && (
-                        <button
-                          onClick={() => (isBatch ? handleCancelLabGroup(group) : handleCancelReservation(primary.id))}
-                          className="bg-destructive/10 text-destructive border border-destructive/20 px-3 py-1 rounded text-xs font-semibold cursor-pointer hover:bg-destructive hover:text-destructive-foreground transition-colors inline-flex items-center gap-1"
-                        >
-                          <Trash2 className="w-3 h-3" /> Cancel
-                        </button>
-                      )}
-                      {['reserved', 'in_use', 'completed'].includes(group.status) && (
-                        <button
-                          onClick={() => (isBatch ? handleDownloadLabGroupForm(group) : handleDownloadForm(primary))}
-                          disabled={downloadingId === primary.id}
-                          className="bg-success/10 text-success border border-success/20 px-3 py-1 rounded text-xs font-semibold cursor-pointer hover:bg-success hover:text-success-foreground transition-colors inline-flex items-center gap-1 disabled:opacity-50"
-                        >
-                          <FileDown className="w-3 h-3" /> {downloadingId === primary.id ? 'Preparing…' : 'Download Form'}
-                        </button>
-                      )}
-                      <button
-                        onClick={() => setMessagingItem({ type: 'lab', id: primary.id, label: `Reservation #RC${String(primary.id).padStart(5, '0')}`, reason: group.rejectionReasons[0] })}
-                        className={`px-3 py-1 rounded text-xs font-semibold cursor-pointer transition-colors inline-flex items-center gap-1 ${group.status === 'rejected' ? 'bg-destructive text-destructive-foreground hover:brightness-110' : 'bg-primary/10 text-primary border border-primary/20 hover:bg-primary hover:text-primary-foreground'}`}
-                      >
-                        <MessageSquare className="w-3 h-3" /> {group.status === 'rejected' ? 'Ask why' : 'Message'}
-                      </button>
+                      </div>
                     </td>
                   </tr>
 
@@ -659,7 +703,7 @@ const UserReservations = () => {
                       {isBatch ? (
                         <button
                           onClick={() => toggleEqGroup(group.key)}
-                          className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary bg-primary/10 border border-primary/20 px-2.5 py-1 rounded-full hover:bg-primary/20 transition-colors cursor-pointer"
+                          className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-semibold text-primary bg-primary/10 border border-primary/20 px-2.5 py-1 rounded-full hover:bg-primary/20 transition-colors cursor-pointer"
                         >
                           <Package className="w-3 h-3" />
                           {group.items.length} items
@@ -684,41 +728,70 @@ const UserReservations = () => {
                       <StatusBadge status={group.status} />
                       {group.mixedStatus && <p className="text-[0.65rem] text-muted-foreground mt-1">Mixed — see items</p>}
                       {group.rejectionReasons.length > 0 && (
-                        <p className="text-[0.7rem] text-destructive mt-1 max-w-[160px]">{group.rejectionReasons.join('; ')}</p>
+                        <div className="mt-1.5">
+                          <button
+                            onClick={() => toggleReason('eq-' + group.key)}
+                            className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-semibold text-primary bg-primary/10 border border-primary/20 px-2.5 py-1 rounded-full hover:bg-primary/20 transition-colors cursor-pointer"
+                          >
+                            <MessageSquare className="w-3 h-3" />
+                            View reason
+                            {expandedReasons['eq-' + group.key] ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                          </button>
+                          {expandedReasons['eq-' + group.key] && (
+                            <p className="mt-1.5 text-[0.7rem] text-destructive bg-destructive/5 border border-destructive/20 rounded-lg px-2.5 py-1.5 max-w-[180px] whitespace-normal break-words">
+                              {group.rejectionReasons.join('; ')}
+                            </p>
+                          )}
+                        </div>
                       )}
                     </td>
-                    <td className="px-4 py-3 flex gap-2 flex-wrap">
-                      {EDITABLE_STATUSES.includes(group.status) && (
+                    <td className="px-4 py-3 align-middle">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {EDITABLE_STATUSES.includes(group.status) && (
+                          <button
+                            title={group.status === 'rejected' ? 'Edit & Resubmit' : 'Edit'} aria-label={group.status === 'rejected' ? 'Edit & Resubmit' : 'Edit'}
+                            onClick={() => startEditEq(group)}
+                            className="bg-primary/10 text-primary border border-primary/20 px-2 py-1 rounded text-xs font-semibold cursor-pointer hover:bg-primary hover:text-primary-foreground transition-colors inline-flex items-center"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        {(group.status === 'pending' || group.status === 'reserved') && (
+                          <button
+                            title="Cancel reservation" aria-label="Cancel reservation"
+                            onClick={() => handleCancelEqGroup(group)}
+                            className="bg-destructive text-destructive-foreground px-2 py-1 rounded text-xs font-semibold border-none cursor-pointer hover:brightness-110 inline-flex items-center"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        {['reserved', 'in_use', 'completed'].includes(group.status) && (
+                          <button
+                            title={downloadingEqKey === group.key ? 'Preparing…' : 'Download Form'} aria-label={downloadingEqKey === group.key ? 'Preparing…' : 'Download Form'}
+                            onClick={() => handleDownloadEqForm(group)}
+                            disabled={downloadingEqKey === group.key}
+                            className="bg-success/10 text-success border border-success/20 px-2 py-1 rounded text-xs font-semibold cursor-pointer hover:bg-success hover:text-success-foreground transition-colors inline-flex items-center disabled:opacity-50"
+                          >
+                            <FileDown className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        {['reserved', 'in_use', 'completed'].includes(group.status) && (
+                          <button
+                            title="Reserve Again" aria-label="Reserve Again"
+                            onClick={() => handleReserveAgainEq(group)}
+                            className="bg-primary/10 text-primary border border-primary/20 px-2 py-1 rounded text-xs font-semibold cursor-pointer hover:bg-primary hover:text-primary-foreground transition-colors inline-flex items-center"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                         <button
-                          onClick={() => startEditEq(group)}
-                          className="bg-primary/10 text-primary border border-primary/20 px-3 py-1 rounded text-xs font-semibold cursor-pointer hover:bg-primary hover:text-primary-foreground transition-colors inline-flex items-center gap-1"
+                          title={group.status === 'rejected' ? 'Ask why' : 'Message'} aria-label={group.status === 'rejected' ? 'Ask why' : 'Message'}
+                          onClick={() => setMessagingItem({ type: 'equipment', id: primary.id, label: `Equipment request #EQ${String(primary.id).padStart(5, '0')}`, reason: group.rejectionReasons[0] })}
+                          className={`px-2 py-1 rounded text-xs font-semibold cursor-pointer transition-colors inline-flex items-center ${group.status === 'rejected' ? 'bg-destructive text-destructive-foreground hover:brightness-110' : 'bg-primary/10 text-primary border border-primary/20 hover:bg-primary hover:text-primary-foreground'}`}
                         >
-                          <Edit2 className="w-3 h-3" /> {group.status === 'rejected' ? 'Edit & Resubmit' : 'Edit'}
+                          <MessageSquare className="w-3.5 h-3.5" />
                         </button>
-                      )}
-                      {(group.status === 'pending' || group.status === 'reserved') && (
-                        <button
-                          onClick={() => handleCancelEqGroup(group)}
-                          className="bg-destructive/10 text-destructive border border-destructive/20 px-3 py-1 rounded text-xs font-semibold cursor-pointer hover:bg-destructive hover:text-destructive-foreground transition-colors inline-flex items-center gap-1"
-                        >
-                          <Trash2 className="w-3 h-3" /> Cancel
-                        </button>
-                      )}
-                      {['reserved', 'in_use', 'completed'].includes(group.status) && (
-                        <button
-                          onClick={() => handleDownloadEqForm(group)}
-                          disabled={downloadingEqKey === group.key}
-                          className="bg-success/10 text-success border border-success/20 px-3 py-1 rounded text-xs font-semibold cursor-pointer hover:bg-success hover:text-success-foreground transition-colors inline-flex items-center gap-1 disabled:opacity-50"
-                        >
-                          <FileDown className="w-3 h-3" /> {downloadingEqKey === group.key ? 'Preparing…' : 'Download Form'}
-                        </button>
-                      )}
-                      <button
-                        onClick={() => setMessagingItem({ type: 'equipment', id: primary.id, label: `Equipment request #EQ${String(primary.id).padStart(5, '0')}`, reason: group.rejectionReasons[0] })}
-                        className={`px-3 py-1 rounded text-xs font-semibold cursor-pointer transition-colors inline-flex items-center gap-1 ${group.status === 'rejected' ? 'bg-destructive text-destructive-foreground hover:brightness-110' : 'bg-primary/10 text-primary border border-primary/20 hover:bg-primary hover:text-primary-foreground'}`}
-                      >
-                        <MessageSquare className="w-3 h-3" /> {group.status === 'rejected' ? 'Ask why' : 'Message'}
-                      </button>
+                      </div>
                     </td>
                   </tr>
 
