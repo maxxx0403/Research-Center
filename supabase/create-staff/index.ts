@@ -51,6 +51,34 @@ Deno.serve(async (req) => {
       return json({ success: true });
     }
 
+    // ── Update staff assigned rooms ──
+    if (body.action === 'update_rooms') {
+      const { user_id, room_ids } = body;
+      if (!user_id || !Array.isArray(room_ids) || room_ids.length === 0) {
+        return json({ error: 'user_id and at least one room are required.' }, 400);
+      }
+
+      const { error: delError } = await supabaseAdmin
+        .from('staff_room_assignments')
+        .delete()
+        .eq('user_id', user_id);
+
+      if (delError) return json({ error: delError.message }, 400);
+
+      const assignments = room_ids.map((laboratory_id: number) => ({
+        user_id,
+        laboratory_id: Number(laboratory_id),
+      }));
+
+      const { error: insError } = await supabaseAdmin
+        .from('staff_room_assignments')
+        .insert(assignments);
+
+      if (insError) return json({ error: insError.message }, 400);
+
+      return json({ success: true });
+    }
+
     // ── Create staff ──
     const { email, password, full_name, room_ids } = body;
 

@@ -31,21 +31,63 @@ export const AuthProvider = ({ children }) => {
   const [assignedRooms, setAssignedRooms] = useState([]);
 
   const fetchRole = async (userId) => {
-    const { data } = await supabase.
-    from('user_roles').
-    select('role').
-    eq('user_id', userId).
-    maybeSingle();
-    const userRole = data?.role || 'user';
-    setRole(userRole);
+    try {
+      const { data } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', userId)
+        .maybeSingle();
+      const userRole = data?.role || 'user';
+      setRole(userRole);
 
-    if (userRole === 'staff') {
-      const { data: roomsData } = await supabase.
-      from('staff_room_assignments').
-      select('laboratory_id, laboratories(id, lab_name, lab_code, floor)').
-      eq('user_id', userId);
-      setAssignedRooms((roomsData || []).map((r) => r.laboratories).filter(Boolean));
-    } else {
+      if (userRole === 'staff') {
+        const { data: assignments, error: assignErr } = await supabase
+          .from('staff_room_assignments')
+          .select('laboratory_id')
+          .eq('user_id', userId);
+
+        if (assignErr) {
+          console.error('Error fetching staff room assignments:', assignErr);
+        }
+
+        const roomIds = [
+          ...new Set(
+            (assignments || [])
+              .map((a) => (a.laboratory_id != null ? Number(a.laboratory_id) : null))
+              .filter((id) => id != null && !isNaN(id) && id > 0)
+          ),
+        ];
+
+        if (roomIds.length > 0) {
+          const { data: labRows, error: labErr } = await supabase
+            .from('laboratories')
+            .select('id, lab_name, lab_code, floor')
+            .in('id', roomIds);
+
+          if (labErr) {
+            console.error('Error fetching laboratories for staff:', labErr);
+          }
+
+          if (labRows && labRows.length > 0) {
+            setAssignedRooms(labRows);
+          } else {
+            setAssignedRooms(
+              roomIds.map((id) => ({
+                id,
+                lab_name: `Room #${id}`,
+                lab_code: `RM-${id}`,
+                floor: null,
+              }))
+            );
+          }
+        } else {
+          setAssignedRooms([]);
+        }
+      } else {
+        setAssignedRooms([]);
+      }
+    } catch (err) {
+      console.error('fetchRole error:', err);
       setAssignedRooms([]);
     }
   };
@@ -115,11 +157,17 @@ export const AuthProvider = ({ children }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
-  const assignedRoomIds = assignedRooms.map((r) => r.id);
+  const assignedRoomIds = assignedRooms
+    .map((r) => (r.id != null ? Number(r.id) : null))
+    .filter((id) => id != null && !isNaN(id));
   const assignedFloors = [...new Set(assignedRooms.map((r) => r.floor).filter(Boolean))];
 
+  const refreshRole = async () => {
+    if (user?.id) await fetchRole(user.id);
+  };
+
   return (
-    <AuthContext.Provider value={{ user, session, loading, role, isAdmin: role === 'admin', isStaff: role === 'staff', assignedRooms, assignedRoomIds, assignedFloors, signOut }}>
+    <AuthContext.Provider value={{ user, session, loading, role, isAdmin: role === 'admin', isStaff: role === 'staff', assignedRooms, assignedRoomIds, assignedFloors, refreshRole, signOut }}>
       {children}
     </AuthContext.Provider>);
 

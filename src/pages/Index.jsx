@@ -13,6 +13,7 @@ const Index = () => {
   const [rating, setRating] = useState(0);
   const [hoverRating, setHoverRating] = useState(0);
   const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
+  const [selectedLabId, setSelectedLabId] = useState('');
   const [feedbackLoading, setFeedbackLoading] = useState(false);
   const [feedbackError, setFeedbackError] = useState('');
   const [fullName, setFullName] = useState('');
@@ -45,26 +46,21 @@ const Index = () => {
     });
   }, [labs, labSearch, labStatusFilter]);
 
+  const resetFeedbackForm = () => {
+    setRating(0);
+    setHoverRating(0);
+    setFullName('');
+    setEmail('');
+    setComment('');
+    setSelectedLabId('');
+    setFeedbackError('');
+  };
+
   const handleFeedbackSubmit = async (e) => {
     e.preventDefault();
-    
+
     if (rating === 0) {
       setFeedbackError('Please select a rating');
-      return;
-    }
-
-    if (!fullName.trim()) {
-      setFeedbackError('Please enter your full name');
-      return;
-    }
-
-    if (!email.trim()) {
-      setFeedbackError('Please enter your email');
-      return;
-    }
-
-    if (!comment.trim()) {
-      setFeedbackError('Please enter a comment');
       return;
     }
 
@@ -72,30 +68,24 @@ const Index = () => {
     setFeedbackError('');
 
     try {
-      // For homepage feedback (not authenticated), we use a guest user_id
-      // You can use a dummy UUID or create a guest feedback record
+      // Homepage feedback is from guests (not logged in), so there's no user_id
       const { error } = await supabase.from('feedbacks').insert({
-        researcher_name: fullName,
-        email: email,
-        laboratory_id: null,
-        rating: rating,
-        comment: comment
+        researcher_name: fullName.trim() || 'Anonymous',
+        email: email.trim(),
+        is_anonymous: !fullName.trim() && !email.trim(),
+        laboratory_id: selectedLabId ? Number(selectedLabId) : null,
+        rating,
+        comment
       });
 
       if (error) {
         setFeedbackError('Failed to submit feedback. ' + error.message);
       } else {
+        resetFeedbackForm();
         setFeedbackSubmitted(true);
-        // Reset form
-        setFullName('');
-        setEmail('');
-        setComment('');
-        setRating(0);
-        // Hide success message after 3 seconds
-        setTimeout(() => setFeedbackSubmitted(false), 3000);
       }
     } catch (err) {
-      setFeedbackError('Error submitting feedback: ' + err.message);
+      setFeedbackError('Failed to submit feedback');
       console.error(err);
     }
     setFeedbackLoading(false);
@@ -288,75 +278,131 @@ const Index = () => {
       {/* Feedback */}
       <section id="feedback" className="py-24 px-[5%] bg-muted/50">
         <div className="text-center mb-14">
-          <h2 className="font-heading text-[clamp(1.9rem,4vw,2.8rem)] text-primary mb-3 font-bold">Share Your Feedback</h2>
-          <p className="text-lg text-muted-foreground max-w-[580px] mx-auto">Help us improve our facilities and services</p>
+          <h2 className="font-heading text-[clamp(1.9rem,4vw,2.8rem)] text-primary mb-3 font-bold">We'd Love Your Feedback</h2>
+          <p className="text-lg text-muted-foreground max-w-[580px] mx-auto">Help us improve the Research Center Laboratory Reservation System</p>
         </div>
-        <form onSubmit={handleFeedbackSubmit} className="max-w-[600px] mx-auto bg-card p-10 rounded-2xl shadow-card">
-          {feedbackSubmitted &&
-          <div className="bg-success/10 border border-success/25 text-success rounded-xl p-4 mb-6 flex items-center gap-2 font-medium animate-slide-in">
-              <CheckCircle2 className="w-5 h-5" /> Thank you for your feedback! It has been saved.
-            </div>
-          }
-          {feedbackError &&
-          <div className="bg-destructive/10 border border-destructive/25 text-destructive rounded-xl p-4 mb-6 text-sm font-medium">
-              {feedbackError}
-            </div>
-          }
-          <div className="mb-5">
-            <label className="block mb-1.5 text-foreground font-semibold text-sm">Full Name <span className="text-destructive">*</span></label>
-            <input 
-              type="text"
-              required 
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              className="w-full px-4 py-3 border-2 border-border rounded-lg text-base bg-card text-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 transition-colors" 
-            />
+
+        {feedbackSubmitted ? (
+          <div className="max-w-[600px] mx-auto bg-card rounded-2xl shadow-lg p-12 text-center animate-fade-up">
+            <CheckCircle2 className="w-16 h-16 text-success mx-auto mb-4" />
+            <h3 className="font-heading text-3xl text-primary mb-3">Thank You!</h3>
+            <p className="text-muted-foreground mb-6">Your feedback has been submitted successfully. We appreciate your valuable input to improve our services.</p>
+            <button
+              type="button"
+              onClick={() => setFeedbackSubmitted(false)}
+              className="gradient-primary text-primary-foreground px-6 py-3 rounded-xl font-semibold border-none cursor-pointer hover:-translate-y-0.5 transition-all"
+            >
+              Submit Another Feedback
+            </button>
           </div>
-          <div className="mb-5">
-            <label className="block mb-1.5 text-foreground font-semibold text-sm">Email <span className="text-destructive">*</span></label>
-            <input 
-              type="email" 
-              required 
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-4 py-3 border-2 border-border rounded-lg text-base bg-card text-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 transition-colors" 
-            />
-          </div>
-          <div className="mb-5">
-            <label className="block mb-1.5 text-foreground font-semibold text-sm">Rating <span className="text-destructive">*</span></label>
-            <div className="flex gap-1 mt-1">
-              {[1, 2, 3, 4, 5].map((s) =>
-              <button 
-                key={s} 
-                type="button" 
-                onClick={() => setRating(s)} 
-                onMouseEnter={() => setHoverRating(s)} 
-                onMouseLeave={() => setHoverRating(0)}
-                className="bg-transparent border-none cursor-pointer transition-transform hover:scale-110"
+        ) : (
+          <form onSubmit={handleFeedbackSubmit} className="max-w-[700px] mx-auto bg-card rounded-2xl shadow-lg p-8 space-y-8">
+            {feedbackError && (
+              <div className="bg-destructive/10 border border-destructive/25 text-destructive rounded-xl p-3 text-sm font-medium">
+                {feedbackError}
+              </div>
+            )}
+
+            {/* Rating */}
+            <div>
+              <label className="block mb-3 font-semibold text-foreground">
+                How would you rate your experience? <span className="text-destructive">*</span>
+              </label>
+              <div className="flex justify-center gap-3 mb-3">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <button
+                    key={star}
+                    type="button"
+                    onClick={() => setRating(star)}
+                    onMouseEnter={() => setHoverRating(star)}
+                    onMouseLeave={() => setHoverRating(0)}
+                    className="bg-transparent border-none cursor-pointer transition-transform hover:scale-110"
+                  >
+                    <Star className={`w-8 h-8 ${(hoverRating || rating) >= star ? 'fill-warning text-warning' : 'text-border'}`} />
+                  </button>
+                ))}
+              </div>
+              <div className="text-center text-sm text-muted-foreground min-h-[1.25rem]">
+                {rating === 1 && 'Poor'}
+                {rating === 2 && 'Fair'}
+                {rating === 3 && 'Good'}
+                {rating === 4 && 'Very Good'}
+                {rating === 5 && 'Excellent'}
+              </div>
+            </div>
+
+            {/* Name + Email (optional) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+              <div>
+                <label className="block mb-1.5 font-semibold text-sm text-foreground">Full Name (Optional)</label>
+                <input
+                  type="text"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  className="w-full px-4 py-3 border-2 border-border rounded-xl text-base bg-card text-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10"
+                />
+              </div>
+              <div>
+                <label className="block mb-1.5 font-semibold text-sm text-foreground">Email (Optional)</label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full px-4 py-3 border-2 border-border rounded-xl text-base bg-card text-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10"
+                />
+              </div>
+            </div>
+
+            {/* Laboratory */}
+            <div>
+              <label className="block mb-1.5 font-semibold text-sm text-foreground">Which laboratory did you use? (Optional)</label>
+              <select
+                value={selectedLabId}
+                onChange={(e) => setSelectedLabId(e.target.value)}
+                className="w-full px-4 py-3 border-2 border-border rounded-xl text-base bg-card text-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10"
               >
-                  <Star className={`w-8 h-8 ${(hoverRating || rating) >= s ? 'fill-warning text-warning' : 'text-border'}`} />
-                </button>
-              )}
+                <option value="">Select a laboratory…</option>
+                {labs.map((lab) => (
+                  <option key={lab.id} value={lab.id}>
+                    {lab.lab_name} ({lab.lab_code})
+                  </option>
+                ))}
+              </select>
             </div>
-          </div>
-          <div className="mb-5">
-            <label className="block mb-1.5 text-foreground font-semibold text-sm">Comment <span className="text-destructive">*</span></label>
-            <textarea 
-              required 
-              rows={4}
-              value={comment}
-              onChange={(e) => setComment(e.target.value)}
-              className="w-full px-4 py-3 border-2 border-border rounded-lg text-base bg-card text-foreground resize-y focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 transition-colors" 
-            />
-          </div>
-          <button 
-            type="submit" 
-            disabled={feedbackLoading}
-            className="w-full py-4 gradient-primary text-primary-foreground border-none rounded-xl font-bold text-base cursor-pointer hover:-translate-y-0.5 hover:shadow-lg transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Send className="w-5 h-5" /> {feedbackLoading ? 'Submitting...' : 'Submit Feedback'}
-          </button>
-        </form>
+
+            {/* Comments */}
+            <div>
+              <label className="block mb-1.5 font-semibold text-sm text-foreground">Comments</label>
+              <textarea
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                placeholder="Tell us what you think… What did we do well? What could we improve?"
+                rows={4}
+                maxLength={1000}
+                className="w-full px-4 py-3 border-2 border-border rounded-xl text-base bg-card text-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 resize-y"
+              />
+              <p className="text-xs text-muted-foreground mt-1">{comment.length} / 1000 characters</p>
+            </div>
+
+            {/* Buttons */}
+            <div className="flex gap-3">
+              <button
+                type="submit"
+                disabled={feedbackLoading || rating === 0}
+                className="flex-1 gradient-primary text-primary-foreground px-6 py-3 rounded-xl font-semibold border-none cursor-pointer hover:-translate-y-0.5 hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                <Send className="w-5 h-5" /> {feedbackLoading ? 'Submitting…' : 'Submit Feedback'}
+              </button>
+              <button
+                type="button"
+                onClick={resetFeedbackForm}
+                className="px-6 py-3 rounded-xl font-semibold border-2 border-border bg-card text-foreground cursor-pointer hover:border-primary hover:text-primary transition-colors"
+              >
+                Clear
+              </button>
+            </div>
+          </form>
+        )}
       </section>
 
       {/* Footer */}

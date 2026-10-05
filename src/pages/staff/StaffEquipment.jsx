@@ -24,8 +24,13 @@ const StaffEquipment = () => {
     supabase.from('equipment').select('*, laboratories(lab_name, lab_code, floor)').order('name'),
     supabase.from('laboratories').select('id, lab_name, lab_code, floor').order('lab_code')]
     );
-    const scopedEq = assignedRoomIds.length ? (eqData || []).filter((e) => assignedRoomIds.includes(e.laboratory_id)) : eqData || [];
-    const scopedLabs = assignedRoomIds.length ? (labData || []).filter((l) => assignedRoomIds.includes(l.id)) : labData || [];
+    const assignedIdsSet = new Set((assignedRoomIds || []).map((id) => String(id)));
+    const scopedEq = assignedIdsSet.size > 0
+      ? (eqData || []).filter((e) => e.laboratory_id != null && assignedIdsSet.has(String(e.laboratory_id)))
+      : eqData || [];
+    const scopedLabs = assignedIdsSet.size > 0
+      ? (labData || []).filter((l) => l.id != null && assignedIdsSet.has(String(l.id)))
+      : labData || [];
     setEquipment(scopedEq);
     setFloorLabs(scopedLabs);
     setLoading(false);

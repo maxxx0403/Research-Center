@@ -117,11 +117,15 @@ export const ReservationCalendarView = ({ labId = null }) => {
     });
   };
 
-  const previousMonth = () =>
+  const previousMonth = () => {
+    setSelectedDate(null);
     setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1));
+  };
 
-  const nextMonth = () =>
+  const nextMonth = () => {
+    setSelectedDate(null);
     setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1));
+  };
 
   const daysInMonth = getDaysInMonth(currentDate);
   const firstDay = getFirstDayOfMonth(currentDate);
@@ -160,6 +164,10 @@ export const ReservationCalendarView = ({ labId = null }) => {
           Closed (Sun)
         </div>
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <div className="w-3 h-3 rounded bg-muted/30 border border-border/60 opacity-60" />
+          Past date
+        </div>
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <UserX className="w-3.5 h-3.5 text-amber-600" />
           Room unavailable
         </div>
@@ -182,16 +190,18 @@ export const ReservationCalendarView = ({ labId = null }) => {
           const dayReservations = day && !closed ? getReservationsForDate(day) : [];
           const unavailableStaff = day ? getUnavailableStaffForDate(day) : [];
           const isToday = day && new Date().toDateString() === new Date(currentDate.getFullYear(), currentDate.getMonth(), day).toDateString();
-          const isSelected = selectedDate === day && !closed;
+          const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+          const isPast = day ? new Date(currentDate.getFullYear(), currentDate.getMonth(), day) < todayStart : false;
+          const isSelected = selectedDate === day && !closed && !isPast;
 
           return (
             <div
               key={idx}
-              onClick={() => { if (!day || closed) return; setSelectedDate(selectedDate === day ? null : day); }}
+              onClick={() => { if (!day || closed || isPast) return; setSelectedDate(selectedDate === day ? null : day); }}
               title={unavailableStaff.length > 0 ? `Unavailable: ${unavailableStaff.map((s) => `${s.name} (${s.roomLabel})`).join(', ')}` : undefined}
               className={`min-h-[60px] sm:min-h-[80px] md:min-h-[100px] p-1.5 sm:p-2 rounded-lg border-2 transition-colors
                 ${!day ? 'bg-muted/20 border-transparent' : ''}
-                ${closed ? 'bg-destructive/5 border-destructive/20 cursor-not-allowed' : isToday ? 'border-primary bg-primary/5 cursor-pointer' : isSelected ? 'bg-primary/10 border-primary cursor-pointer' : day ? 'border-border hover:border-primary/50 hover:bg-primary/5 cursor-pointer' : ''}
+                ${closed ? 'bg-destructive/5 border-destructive/20 cursor-not-allowed' : isPast ? 'bg-muted/30 border-border/60 opacity-60 cursor-not-allowed' : isToday ? 'border-primary bg-primary/5 cursor-pointer' : isSelected ? 'bg-primary/10 border-primary cursor-pointer' : day ? 'border-border hover:border-primary/50 hover:bg-primary/5 cursor-pointer' : ''}
               `}
             >
               {day && (

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, Fragment } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Check, X, Trash2, AlertCircle, FlaskConical, Package, Users, ChevronDown, ChevronUp, FileDown, MessageSquare, FileSpreadsheet, RefreshCw } from 'lucide-react';
 import RowActions from '@/components/RowActions';
 import StatusBadge from '@/components/StatusBadge';
@@ -40,6 +41,9 @@ const groupByBatch = (items) => {
 
 const Reservations = () => {
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [tab, setTab] = useState('lab');
+  const [highlightId, setHighlightId] = useState(null);
 
   // Laboratory reservations state
   const [labItems, setLabItems] = useState([]);
@@ -107,13 +111,46 @@ const Reservations = () => {
 
   useEffect(() => { fetchLabData(); fetchEqData(); }, []);
 
+  // Coming from a notification click (?open=lab:12 or ?open=equipment:7):
+  // open that reservation's message thread and scroll to/highlight its row.
+  useEffect(() => {
+    if (labLoading || eqLoading) return;
+    const open = searchParams.get('open');
+    if (!open) return;
+    const [type, idStr] = open.split(':');
+    const id = Number(idStr);
+    const list = type === 'lab' ? labItems : eqItems;
+    const item = list.find((r) => r.id === id);
+    if (item) {
+      const label = type === 'lab' ? `Reservation #RC${String(id).padStart(5, '0')}` : `Equipment request #EQ${String(id).padStart(5, '0')}`;
+      setMessagingItem({ type, id, label, reason: item.rejection_reason });
+      setHighlightId(`${type}-${id}`);
+      setTab(type === 'lab' ? 'lab' : 'equipment');
+      setTimeout(() => {
+        document.getElementById(`row-${type}-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 100);
+      setTimeout(() => setHighlightId(null), 3000);
+    }
+    setSearchParams({}, { replace: true });
+  }, [labLoading, eqLoading, searchParams]);
+
   // Group rows submitted together (same batch_id) into one entry, then filter
   // on the group's representative fields so a multi-lab/multi-equipment
   // submission is searched/filtered — and shown — as a single row.
   const labGroups = useMemo(() => groupByBatch(labItems), [labItems]);
   const filteredLabGroups = labGroups.filter((g) => {
     const r = g.primary;
-    const matchSearch = !labSearch || r.researcher_name.toLowerCase().includes(labSearch.toLowerCase()) || (r.email || '').toLowerCase().includes(labSearch.toLowerCase());
+    const term = labSearch.toLowerCase().trim();
+    const matchSearch =
+      !term ||
+      r.researcher_name.toLowerCase().includes(term) ||
+      (r.email || '').toLowerCase().includes(term) ||
+      `rc${String(r.id).padStart(5, '0')}`.includes(term.replace('#', '')) ||
+      String(r.id).includes(term.replace('#', '')) ||
+      g.items.some((it) =>
+        (it.laboratories?.lab_name || '').toLowerCase().includes(term) ||
+        (it.laboratories?.lab_code || '').toLowerCase().includes(term)
+      );
     const matchStatus = !labFilterStatus || g.items.some((it) => it.status === labFilterStatus);
     return matchSearch && matchStatus;
   });
@@ -121,10 +158,31 @@ const Reservations = () => {
   const eqGroups = useMemo(() => groupByBatch(eqItems), [eqItems]);
   const filteredEqGroups = eqGroups.filter((g) => {
     const r = g.primary;
-    const matchSearch = !eqSearch || r.researcher_name.toLowerCase().includes(eqSearch.toLowerCase()) || g.items.some((it) => (it.equipment?.name || '').toLowerCase().includes(eqSearch.toLowerCase()));
+    const term = eqSearch.toLowerCase().trim();
+    const matchSearch =
+      !term ||
+      r.researcher_name.toLowerCase().includes(term) ||
+      (r.email || '').toLowerCase().includes(term) ||
+      `eq${String(r.id).padStart(5, '0')}`.includes(term.replace('#', '')) ||
+      String(r.id).includes(term.replace('#', '')) ||
+      g.items.some((it) => (it.equipment?.name || '').toLowerCase().includes(term));
     const matchStatus = !eqFilterStatus || g.items.some((it) => it.status === eqFilterStatus);
     return matchSearch && matchStatus;
   });
+
+  const handleResetLab = () => {
+    setLabSearch('');
+    setLabFilterStatus('');
+    setLabLoading(true);
+    fetchLabData();
+  };
+
+  const handleResetEq = () => {
+    setEqSearch('');
+    setEqFilterStatus('');
+    setEqLoading(true);
+    fetchEqData();
+  };
 
   // Lab actions
   const updateLabStatusBatch = async (ids, status) => {
@@ -270,15 +328,42 @@ const Reservations = () => {
   const toggleEqGroup = (key) => setExpandedEqGroups(prev => ({ ...prev, [key]: !prev[key] }));
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
 
-      {/* ── LABORATORY RESERVATIONS ── */}
-      <div className="space-y-4">
-        <div className="flex items-center gap-2">
-          <FlaskConical className="w-5 h-5 text-primary" />
-          <h2 className="font-heading text-base font-bold text-foreground">Laboratory Reservations</h2>
+      {/* Header and Tab Navigation */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-border">
+        <div className="flex gap-1">
+          {[
+            { key: 'lab', label: 'Laboratories', icon: FlaskConical, count: filteredLabGroups.length },
+            { key: 'equipment', label: 'Equipment', icon: Package, count: filteredEqGroups.length },
+          ].map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setTab(t.key)}
+              className={`inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold bg-transparent border-t-0 border-x-0 border-b-2 -mb-px cursor-pointer transition-colors ${tab === t.key ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+            >
+              <t.icon className="w-4 h-4" /> {t.label}
+              <span className={`px-1.5 py-0.5 rounded-full text-xs font-semibold ${tab === t.key ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
+                {t.count}
+              </span>
+            </button>
+          ))}
         </div>
 
+        <button
+          onClick={handleExportExcel}
+          disabled={exportingExcel || labLoading || eqLoading}
+          className="inline-flex items-center gap-2 px-4 py-2 mb-2 sm:mb-2 rounded-lg text-sm font-semibold bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity self-start sm:self-auto"
+        >
+          <FileSpreadsheet className="w-4 h-4" />
+          {exportingExcel ? 'Exporting…' : 'Export All to Excel'}
+        </button>
+      </div>
+
+      {/* ── LABORATORY RESERVATIONS ── */}
+      {tab === 'lab' && (
+      <div className="space-y-4">
         {/* Lab search bar */}
         <div className="bg-card rounded-xl shadow-card p-4">
           <div className="flex flex-wrap gap-3 items-end">
@@ -295,14 +380,7 @@ const Reservations = () => {
                 ))}
               </select>
             </div>
-            <button
-              onClick={handleExportExcel}
-              disabled={exportingExcel || labLoading || eqLoading}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
-            >
-              <FileSpreadsheet className="w-4 h-4" />
-              {exportingExcel ? 'Exporting…' : 'Export All to Excel'}
-            </button>
+            <button type="button" onClick={handleResetLab} className="bg-muted text-muted-foreground border border-border px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer hover:bg-border transition-colors">Reset</button>
           </div>
         </div>
 
@@ -337,7 +415,7 @@ const Reservations = () => {
                   const totalEquipment = group.items.reduce((sum, it) => sum + (it.reservation_equipment?.length || 0), 0);
                   return (
                   <Fragment key={group.key}>
-                  <tr className="border-b border-muted hover:bg-muted/30">
+                  <tr id={`row-lab-${r.id}`} className={`border-b border-muted hover:bg-muted/30 transition-colors ${highlightId === `lab-${r.id}` ? 'bg-primary/10 ring-2 ring-primary/40' : ''}`}>
                     <td className="px-4 py-3 font-semibold text-xs">
                       #RC{String(r.id).padStart(5, '0')}
                       {isBatch && <span className="text-muted-foreground font-normal"> (+{group.items.length - 1})</span>}
@@ -447,7 +525,7 @@ const Reservations = () => {
                             icon: RefreshCw,
                             hidden: group.status === 'pending',
                             value: group.status,
-                            options: ['reserved', 'in_use', 'completed', 'cancelled'].map((st) => ({ value: st, label: st.replace('_', ' ').replace(/^\w/, (c) => c.toUpperCase()) })),
+                            options: ['pending', 'reserved', 'in_use', 'completed', 'cancelled'].map((st) => ({ value: st, label: st.replace('_', ' ').replace(/^\w/, (c) => c.toUpperCase()) })),
                             onChange: (v) => updateLabStatusBatch(group.ids, v),
                           },
                           {
@@ -514,13 +592,11 @@ const Reservations = () => {
           </div>
         </div>
       </div>
+      )}
 
       {/* ── EQUIPMENT RESERVATIONS ── */}
+      {tab === 'equipment' && (
       <div className="space-y-4">
-        <div className="flex items-center gap-2">
-          <Package className="w-5 h-5 text-primary" />
-          <h2 className="font-heading text-base font-bold text-foreground">Equipment Reservations</h2>
-        </div>
 
         {/* Equipment search bar */}
         <div className="bg-card rounded-xl shadow-card p-4">
@@ -538,7 +614,7 @@ const Reservations = () => {
                 ))}
               </select>
             </div>
-            <button onClick={() => { setEqSearch(''); setEqFilterStatus(''); }} className="bg-muted text-muted-foreground border border-border px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer hover:bg-border transition-colors">Reset</button>
+            <button type="button" onClick={handleResetEq} className="bg-muted text-muted-foreground border border-border px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer hover:bg-border transition-colors">Reset</button>
           </div>
         </div>
 
@@ -571,7 +647,7 @@ const Reservations = () => {
                   const isGroupExpanded = expandedEqGroups[group.key];
                   return (
                   <Fragment key={group.key}>
-                  <tr className="border-b border-muted hover:bg-muted/30">
+                  <tr id={`row-equipment-${r.id}`} className={`border-b border-muted hover:bg-muted/30 transition-colors ${highlightId === `equipment-${r.id}` ? 'bg-primary/10 ring-2 ring-primary/40' : ''}`}>
                     <td className="px-4 py-3 font-semibold text-xs">
                       #EQ{String(r.id).padStart(5, '0')}
                       {isBatch && <span className="text-muted-foreground font-normal"> (+{group.items.length - 1})</span>}
@@ -641,7 +717,7 @@ const Reservations = () => {
                             icon: RefreshCw,
                             hidden: group.status === 'pending',
                             value: group.status,
-                            options: ['reserved', 'in_use', 'completed', 'cancelled'].map((st) => ({ value: st, label: st.replace('_', ' ').replace(/^\w/, (c) => c.toUpperCase()) })),
+                            options: ['pending', 'reserved', 'in_use', 'completed', 'cancelled'].map((st) => ({ value: st, label: st.replace('_', ' ').replace(/^\w/, (c) => c.toUpperCase()) })),
                             onChange: (v) => updateEqStatusBatch(group.ids, v),
                           },
                           {
@@ -684,6 +760,7 @@ const Reservations = () => {
           </div>
         </div>
       </div>
+      )}
 
       {/* Rejection Reason Modal */}
       {rejectingId && (

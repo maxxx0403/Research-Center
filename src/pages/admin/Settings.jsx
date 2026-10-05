@@ -161,18 +161,59 @@ const AdminSettings = () => {
       return;
     }
     setSavingEdit(true);
-    const { data, error } = await supabase.functions.invoke('create-staff', {
-      body: {
-        action: 'update_rooms',
-        user_id: editingStaff.user_id,
-        room_ids: editingStaff.room_ids,
-      },
-    });
+
+    let updateSuccess = false;
+    let errMessage = '';
+
+    try {
+      const { data, error } = await supabase.functions.invoke('create-staff', {
+        body: {
+          action: 'update_rooms',
+          user_id: editingStaff.user_id,
+          room_ids: editingStaff.room_ids,
+        },
+      });
+
+      if (!error && !data?.error) {
+        updateSuccess = true;
+      } else {
+        errMessage = await getFunctionErrorMessage(error, data);
+      }
+    } catch (e) {
+      errMessage = e?.message || 'Invocation failed';
+    }
+
+    // Direct fallback if edge function is not deployed yet or returned an error
+    if (!updateSuccess) {
+      const { error: delErr } = await supabase
+        .from('staff_room_assignments')
+        .delete()
+        .eq('user_id', editingStaff.user_id);
+
+      if (!delErr) {
+        const assignments = editingStaff.room_ids.map((roomId) => ({
+          user_id: editingStaff.user_id,
+          laboratory_id: Number(roomId),
+        }));
+
+        const { error: insErr } = await supabase
+          .from('staff_room_assignments')
+          .insert(assignments);
+
+        if (!insErr) {
+          updateSuccess = true;
+        } else {
+          errMessage = insErr.message;
+        }
+      } else {
+        errMessage = delErr.message;
+      }
+    }
+
     setSavingEdit(false);
 
-    if (error || data?.error) {
-      const message = await getFunctionErrorMessage(error, data);
-      toast.error('Failed to update rooms: ' + message);
+    if (!updateSuccess) {
+      toast.error('Failed to update rooms: ' + errMessage);
       return;
     }
 

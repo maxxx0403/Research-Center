@@ -35,11 +35,12 @@ const groupByBatch = (items) => {
 };
 
 const StaffReservations = () => {
-  const { user, assignedRoomIds } = useAuth();
+  const { user, assignedRoomIds, refreshRole } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [labItems, setLabItems] = useState([]);
   const [eqItems, setEqItems] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState('lab');
   const [search, setSearch] = useState('');
   const [rejectingId, setRejectingId] = useState(null);
   const [rejectionReason, setRejectionReason] = useState('');
@@ -51,27 +52,50 @@ const StaffReservations = () => {
   const [expandedEqGroups, setExpandedEqGroups] = useState({});
 
   const loadData = async () => {
-    const [labRes, eqRes] = await Promise.all([
-    supabase.
-    from('reservations').
-    select('id, user_id, researcher_name, email, start_datetime, end_datetime, status, rejection_reason, members_list, laboratory_id, batch_id, laboratories(lab_name, lab_code, floor)').
-    order('start_datetime', { ascending: false }),
-    supabase.
-    from('equipment_reservations').
-    select('id, user_id, researcher_name, email, quantity_reserved, start_datetime, end_datetime, status, rejection_reason, batch_id, members_list, equipment(name, brand, laboratory_id, laboratories(lab_code, floor))').
-    order('start_datetime', { ascending: false })]
-    );
+    setLoading(true);
+    try {
+      const [labRes, eqRes] = await Promise.all([
+        supabase
+          .from('reservations')
+          .select('id, user_id, researcher_name, email, phone, start_datetime, end_datetime, status, rejection_reason, members_list, laboratory_id, batch_id, created_at, laboratories(id, lab_name, lab_code, floor)')
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('equipment_reservations')
+          .select('id, user_id, researcher_name, email, quantity_reserved, start_datetime, end_datetime, status, rejection_reason, batch_id, members_list, created_at, equipment(name, brand, laboratory_id, laboratories(id, lab_code, floor))')
+          .order('created_at', { ascending: false })
+      ]);
 
-    const labScoped = assignedRoomIds.length ?
-    (labRes.data || []).filter((r) => assignedRoomIds.includes(r.laboratory_id)) :
-    labRes.data || [];
-    const eqScoped = assignedRoomIds.length ?
-    (eqRes.data || []).filter((r) => assignedRoomIds.includes(r.equipment?.laboratory_id)) :
-    eqRes.data || [];
+      if (labRes.error) {
+        console.error('Staff lab reservations fetch error:', labRes.error);
+        toast.error('Failed to load lab reservations: ' + labRes.error.message);
+      }
+      if (eqRes.error) {
+        console.error('Staff equipment reservations fetch error:', eqRes.error);
+      }
 
-    setLabItems(labScoped);
-    setEqItems(eqScoped);
-    setLoading(false);
+      const assignedIdsSet = new Set((assignedRoomIds || []).map((id) => String(id)));
+
+      const labScoped = assignedIdsSet.size > 0
+        ? (labRes.data || []).filter((r) => {
+            const labId = r.laboratory_id != null ? String(r.laboratory_id) : (r.laboratories?.id != null ? String(r.laboratories.id) : null);
+            return labId != null && assignedIdsSet.has(labId);
+          })
+        : (labRes.data || []);
+
+      const eqScoped = assignedIdsSet.size > 0
+        ? (eqRes.data || []).filter((r) => {
+            const labId = r.equipment?.laboratory_id != null ? String(r.equipment.laboratory_id) : null;
+            return labId != null && assignedIdsSet.has(labId);
+          })
+        : (eqRes.data || []);
+
+      setLabItems(labScoped);
+      setEqItems(eqScoped);
+    } catch (err) {
+      console.error('Error loading staff reservations:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => { loadData(); }, [assignedRoomIds]);
@@ -90,6 +114,7 @@ const StaffReservations = () => {
       const label = type === 'lab' ? `Reservation #RC${String(id).padStart(5, '0')}` : `Equipment request #EQ${String(id).padStart(5, '0')}`;
       setMessagingItem({ type, id, label, reason: item.rejection_reason });
       setHighlightId(`${type}-${id}`);
+      setTab(type === 'lab' ? 'lab' : 'equipment');
       setTimeout(() => {
         document.getElementById(`row-${type}-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }, 100);
@@ -99,17 +124,34 @@ const StaffReservations = () => {
   }, [loading, searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const labGroups = useMemo(() => groupByBatch(labItems), [labItems]);
-  const filteredLabGroups = labGroups.filter((g) =>
-  !search ||
-  g.primary.researcher_name.toLowerCase().includes(search.toLowerCase()) ||
-  (g.primary.email || '').toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredLabGroups = labGroups.filter((g) => {
+    const term = search.toLowerCase().trim();
+    if (!term) return true;
+    const r = g.primary;
+    return (
+      r.researcher_name.toLowerCase().includes(term) ||
+      (r.email || '').toLowerCase().includes(term) ||
+      `rc${String(r.id).padStart(5, '0')}`.includes(term.replace('#', '')) ||
+      String(r.id).includes(term.replace('#', '')) ||
+      g.items.some((it) =>
+        (it.laboratories?.lab_name || '').toLowerCase().includes(term) ||
+        (it.laboratories?.lab_code || '').toLowerCase().includes(term)
+      )
+    );
+  });
   const eqGroups = useMemo(() => groupByBatch(eqItems), [eqItems]);
-  const filteredEqGroups = eqGroups.filter((g) =>
-  !search ||
-  g.primary.researcher_name.toLowerCase().includes(search.toLowerCase()) ||
-  g.items.some((it) => (it.equipment?.name || '').toLowerCase().includes(search.toLowerCase()))
-  );
+  const filteredEqGroups = eqGroups.filter((g) => {
+    const term = search.toLowerCase().trim();
+    if (!term) return true;
+    const r = g.primary;
+    return (
+      r.researcher_name.toLowerCase().includes(term) ||
+      (r.email || '').toLowerCase().includes(term) ||
+      `eq${String(r.id).padStart(5, '0')}`.includes(term.replace('#', '')) ||
+      String(r.id).includes(term.replace('#', '')) ||
+      g.items.some((it) => (it.equipment?.name || '').toLowerCase().includes(term))
+    );
+  });
 
   const fmt = (d) => new Date(d).toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
@@ -195,14 +237,45 @@ const StaffReservations = () => {
           <h2 className="font-heading text-lg font-bold">Reservations</h2>
           <p className="text-xs text-muted-foreground">{assignedRoomIds.length ? `${assignedRoomIds.length} assigned room${assignedRoomIds.length > 1 ? 's' : ''}` : 'all rooms'} — you can approve/reject reservations for your assigned rooms</p>
         </div>
-        <div className="relative w-full sm:w-64">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search researcher..." className="w-full pl-9 pr-3 py-2 border border-border rounded-lg text-sm bg-card text-foreground focus:outline-none focus:border-primary" />
+        <div className="flex gap-2 w-full sm:w-auto items-center">
+          <div className="relative w-full sm:w-64">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search researcher..." className="w-full pl-9 pr-3 py-2 border border-border rounded-lg text-sm bg-card text-foreground focus:outline-none focus:border-primary" />
+          </div>
+          <button
+            type="button"
+            onClick={async () => {
+              setSearch('');
+              if (refreshRole) await refreshRole();
+              loadData();
+            }}
+            className="bg-muted text-muted-foreground border border-border px-3 py-2 rounded-lg text-sm font-semibold cursor-pointer hover:bg-border transition-colors whitespace-nowrap"
+          >
+            Reset
+          </button>
         </div>
       </div>
 
-      <div>
-        <h3 className="font-heading text-sm font-bold mb-3">Laboratory Reservations <span className="text-muted-foreground font-normal">({filteredLabGroups.length})</span></h3>
+      <div className="flex gap-1 border-b border-border">
+        {[
+          { key: 'lab', label: 'Laboratories', icon: FlaskConical, count: filteredLabGroups.length },
+          { key: 'equipment', label: 'Equipment', icon: Package, count: filteredEqGroups.length },
+        ].map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            onClick={() => setTab(t.key)}
+            className={`inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold bg-transparent border-t-0 border-x-0 border-b-2 -mb-px cursor-pointer transition-colors ${tab === t.key ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+          >
+            <t.icon className="w-4 h-4" /> {t.label}
+            <span className={`px-1.5 py-0.5 rounded-full text-xs font-semibold ${tab === t.key ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
+              {t.count}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {tab === 'lab' && (
         <div className="bg-card rounded-xl shadow-card overflow-hidden overflow-x-auto">
           <table className="w-full text-sm border-collapse">
             <thead>
@@ -303,10 +376,9 @@ const StaffReservations = () => {
             </tbody>
           </table>
         </div>
-      </div>
+      )}
 
-      <div>
-        <h3 className="font-heading text-sm font-bold mb-3">Equipment Reservations <span className="text-muted-foreground font-normal">({filteredEqGroups.length})</span></h3>
+      {tab === 'equipment' && (
         <div className="bg-card rounded-xl shadow-card overflow-hidden overflow-x-auto">
           <table className="w-full text-sm border-collapse">
             <thead>
@@ -402,7 +474,7 @@ const StaffReservations = () => {
             </tbody>
           </table>
         </div>
-      </div>
+      )}
 
       {rejectingId &&
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
