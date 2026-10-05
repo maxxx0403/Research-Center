@@ -3,6 +3,7 @@ import { CalendarOff, Trash2, Plus } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
+import RowActions from '@/components/RowActions';
 
 const inputCls = "w-full px-3 py-2.5 border border-border rounded-lg text-sm bg-card text-foreground focus:outline-none focus:border-primary";
 
@@ -186,14 +187,9 @@ const StaffUnavailability = () => {
                     </p>
                     {d.reason && <p className="text-xs text-muted-foreground">{d.reason}</p>}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveUnavailableDate(d.id)}
-                    className="p-1.5 hover:bg-destructive/10 text-destructive rounded transition-colors"
-                    title="Remove"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <RowActions
+                    items={[{ label: 'Remove', icon: Trash2, destructive: true, onClick: () => handleRemoveUnavailableDate(d.id) }]}
+                  />
                 </div>
               ))
             )}

@@ -3,6 +3,7 @@ import { CheckCircle2, UserPlus, Trash2, Users, KeyRound, Pencil, X, Save } from
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
+import RowActions from '@/components/RowActions';
 
 const inputCls = "w-full px-3 py-2.5 border border-border rounded-lg text-sm bg-card text-foreground focus:outline-none focus:border-primary";
 const EMPTY_STAFF = { full_name: '', email: '', password: '', room_ids: [] };
@@ -323,12 +324,17 @@ const AdminSettings = () => {
                       }
                       </td>
                       <td className="px-4 py-2.5 text-right whitespace-nowrap">
-                        <button onClick={() => editingStaff?.user_id === m.user_id ? cancelEditRooms() : startEditRooms(m)} className="p-1.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors border-none cursor-pointer mr-1.5" title="Edit assigned rooms">
-                          <Pencil className="w-3.5 h-3.5" />
-                        </button>
-                        <button onClick={() => handleDeleteStaff(m)} className="p-1.5 rounded-lg bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors border-none cursor-pointer" title="Remove">
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        <RowActions
+                          items={[
+                            {
+                              label: editingStaff?.user_id === m.user_id ? 'Cancel editing rooms' : 'Edit assigned rooms',
+                              icon: Pencil,
+                              onClick: () => (editingStaff?.user_id === m.user_id ? cancelEditRooms() : startEditRooms(m)),
+                            },
+                            { separator: true },
+                            { label: 'Remove staff', icon: Trash2, destructive: true, onClick: () => handleDeleteStaff(m) },
+                          ]}
+                        />
                       </td>
                     </tr>
                     {editingStaff?.user_id === m.user_id &&

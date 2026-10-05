@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Package } from 'lucide-react';
+import { Search, Package, CalendarPlus } from 'lucide-react';
+import RowActions from '@/components/RowActions';
 import { supabase } from '@/integrations/supabase/client';
 import StatusBadge from '@/components/StatusBadge';
 
@@ -95,13 +96,12 @@ const UserEquipment = () => {
                     <StatusBadge status={e.status} />
                   </td>
                   <td className="px-4 py-3">
-                    {e.status === 'maintenance' ? (
-                      <span className="text-xs text-muted-foreground italic">Under Maintenance</span>
-                    ) : (
-                      <Link to={`/user/reserve-equipment?equipment_id=${e.id}`} className="text-primary text-xs font-semibold hover:underline no-underline">
-                        Reserve →
-                      </Link>
-                    )}
+                    <RowActions
+                      items={[
+                        { label: 'Reserve', icon: CalendarPlus, to: `/user/reserve-equipment?equipment_id=${e.id}`, hidden: e.status === 'maintenance' },
+                        { label: 'Under Maintenance', disabled: true, hidden: e.status !== 'maintenance' },
+                      ]}
+                    />
                   </td>
                 </tr>
               ) :

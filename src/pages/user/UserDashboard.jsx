@@ -93,45 +93,70 @@ const UserDashboard = () => {
         <div className="px-6 py-4 border-b border-border">
           <h2 className="font-heading text-sm font-bold">Recent Reservations</h2>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm border-collapse">
-            <thead>
-              <tr className="bg-muted/50 border-b-2 border-border">
-                <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">ID</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Laboratory</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Purpose</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Schedule</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr><td colSpan={5} className="text-center py-12 text-muted-foreground">Loading…</td></tr>
-              ) : reservations.length ? reservations.slice(0, 8).map((r) => (
-                <tr key={r.id} className="border-b border-muted hover:bg-muted/30">
-                  <td className="px-4 py-3 font-semibold text-xs">#RC{String(r.id).padStart(5, '0')}</td>
-                  <td className="px-4 py-3">
-                    <div className="font-semibold">{r.laboratories?.lab_name}</div>
-                    <code className="text-[0.7rem] bg-muted px-1 py-0.5 rounded">{r.laboratories?.lab_code}</code>
-                  </td>
-                  <td className="px-4 py-3 text-xs max-w-[200px]">{r.research_purpose.slice(0, 80)}{r.research_purpose.length > 80 ? '…' : ''}</td>
-                  <td className="px-4 py-3 text-xs whitespace-nowrap">
-                    {new Date(r.start_datetime).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}<br />
-                    {new Date(r.start_datetime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} – {new Date(r.end_datetime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
-                  </td>
-                  <td className="px-4 py-3"><StatusBadge status={r.status} /></td>
-                </tr>
-              )) : (
-                <tr>
-                  <td colSpan={5} className="text-center py-12 text-muted-foreground">
-                    <p className="mb-2">No reservations yet</p>
-                    <Link to="/user/reserve" className="text-primary underline text-sm">Reserve your first lab →</Link>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        {loading ? (
+          <div className="text-center py-12 text-muted-foreground">Loading…</div>
+        ) : reservations.length === 0 ? (
+          <div className="text-center py-12 text-muted-foreground">
+            <p className="mb-2">No reservations yet</p>
+            <Link to="/user/reserve" className="text-primary underline text-sm">Reserve your first lab →</Link>
+          </div>
+        ) : (
+          <>
+            {/* Phone / tablet: stacked cards */}
+            <div className="md:hidden divide-y divide-muted">
+              {reservations.slice(0, 8).map((r) => (
+                <div key={r.id} className="px-4 py-3 space-y-1.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="font-semibold text-sm">{r.laboratories?.lab_name}</div>
+                      <code className="text-[0.7rem] bg-muted px-1 py-0.5 rounded">{r.laboratories?.lab_code}</code>
+                    </div>
+                    <StatusBadge status={r.status} />
+                  </div>
+                  <p className="text-xs text-muted-foreground">{r.research_purpose.slice(0, 80)}{r.research_purpose.length > 80 ? '…' : ''}</p>
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>#RC{String(r.id).padStart(5, '0')}</span>
+                    <span>
+                      {new Date(r.start_datetime).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}, {new Date(r.start_datetime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}–{new Date(r.end_datetime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Desktop: table */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr className="bg-muted/50 border-b-2 border-border">
+                    <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">ID</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Laboratory</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Purpose</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Schedule</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reservations.slice(0, 8).map((r) => (
+                    <tr key={r.id} className="border-b border-muted hover:bg-muted/30">
+                      <td className="px-4 py-3 font-semibold text-xs">#RC{String(r.id).padStart(5, '0')}</td>
+                      <td className="px-4 py-3">
+                        <div className="font-semibold">{r.laboratories?.lab_name}</div>
+                        <code className="text-[0.7rem] bg-muted px-1 py-0.5 rounded">{r.laboratories?.lab_code}</code>
+                      </td>
+                      <td className="px-4 py-3 text-xs max-w-[200px]">{r.research_purpose.slice(0, 80)}{r.research_purpose.length > 80 ? '…' : ''}</td>
+                      <td className="px-4 py-3 text-xs whitespace-nowrap">
+                        {new Date(r.start_datetime).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}<br />
+                        {new Date(r.start_datetime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} – {new Date(r.end_datetime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                      </td>
+                      <td className="px-4 py-3"><StatusBadge status={r.status} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

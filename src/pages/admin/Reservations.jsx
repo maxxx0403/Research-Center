@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, Fragment } from 'react';
-import { Check, X, Trash2, AlertCircle, FlaskConical, Package, Users, ChevronDown, ChevronUp, FileDown, MessageSquare, FileSpreadsheet } from 'lucide-react';
+import { Check, X, Trash2, AlertCircle, FlaskConical, Package, Users, ChevronDown, ChevronUp, FileDown, MessageSquare, FileSpreadsheet, RefreshCw } from 'lucide-react';
+import RowActions from '@/components/RowActions';
 import StatusBadge from '@/components/StatusBadge';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -294,20 +295,15 @@ const Reservations = () => {
                 ))}
               </select>
             </div>
-            <button onClick={() => { setLabSearch(''); setLabFilterStatus(''); }} className="bg-muted text-muted-foreground border border-border px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer hover:bg-border transition-colors">Reset</button>
+            <button
+              onClick={handleExportExcel}
+              disabled={exportingExcel || labLoading || eqLoading}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
+            >
+              <FileSpreadsheet className="w-4 h-4" />
+              {exportingExcel ? 'Exporting…' : 'Export All to Excel'}
+            </button>
           </div>
-        </div>
-
-        {/* Excel export (all lab + equipment reservations) */}
-        <div className="flex justify-end">
-          <button
-            onClick={handleExportExcel}
-            disabled={exportingExcel || labLoading || eqLoading}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
-          >
-            <FileSpreadsheet className="w-4 h-4" />
-            {exportingExcel ? 'Exporting…' : 'Export All to Excel'}
-          </button>
         </div>
 
         {/* Lab table */}
@@ -442,41 +438,34 @@ const Reservations = () => {
                       {group.mixedStatus && <p className="text-[0.65rem] text-muted-foreground mt-1">Mixed — see breakdown</p>}
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex gap-1.5 flex-wrap items-center">
-                        {group.status === 'pending' ? (
-                          <>
-                            <button onClick={() => approveLabGroup(group)} className="bg-success text-success-foreground px-2 py-1 rounded text-xs font-semibold border-none cursor-pointer hover:brightness-110 inline-flex items-center gap-1">
-                              <Check className="w-3.5 h-3.5" /> Accept
-                            </button>
-                            <button onClick={() => setRejectingId(group.key)} className="bg-destructive text-destructive-foreground px-2 py-1 rounded text-xs font-semibold border-none cursor-pointer hover:brightness-110 inline-flex items-center gap-1">
-                              <X className="w-3.5 h-3.5" /> Reject
-                            </button>
-                          </>
-                        ) : (
-                          <select defaultValue={group.status} onChange={(e) => updateLabStatusBatch(group.ids, e.target.value)} className="px-2 py-1 border border-border rounded text-xs bg-card text-foreground">
-                            {['reserved', 'in_use', 'completed', 'cancelled'].map((s) => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
-                          </select>
-                        )}
-                        {['reserved', 'in_use', 'completed'].includes(group.status) && (
-                          <button
-                            onClick={() => handleDownloadLabGroupForm(group)}
-                            disabled={downloadingId === r.id}
-                            className="bg-success/10 text-success border border-success/20 px-2 py-1 rounded text-xs font-semibold cursor-pointer hover:bg-success hover:text-success-foreground transition-colors inline-flex items-center gap-1 disabled:opacity-50"
-                          >
-                            <FileDown className="w-3.5 h-3.5" /> {downloadingId === r.id ? '…' : 'Form'}
-                          </button>
-                        )}
-                        <button
-                          onClick={() => setMessagingItem({ type: 'lab', id: r.id, label: `Reservation #RC${String(r.id).padStart(5, '0')}`, reason: r.rejection_reason })}
-                          className="bg-primary/10 text-primary border border-primary/20 px-2 py-1 rounded text-xs font-semibold cursor-pointer hover:bg-primary hover:text-primary-foreground transition-colors"
-                          title="Messages"
-                        >
-                          <MessageSquare className="w-3.5 h-3.5" />
-                        </button>
-                        <button onClick={() => deleteLabGroup(group)} className="bg-destructive text-destructive-foreground px-2 py-1 rounded text-xs font-semibold border-none cursor-pointer hover:brightness-110">
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
+                      <RowActions
+                        items={[
+                          { label: 'Accept', icon: Check, success: true, hidden: group.status !== 'pending', onClick: () => approveLabGroup(group) },
+                          { label: 'Reject', icon: X, destructive: true, hidden: group.status !== 'pending', onClick: () => setRejectingId(group.key) },
+                          {
+                            label: 'Change status',
+                            icon: RefreshCw,
+                            hidden: group.status === 'pending',
+                            value: group.status,
+                            options: ['reserved', 'in_use', 'completed', 'cancelled'].map((st) => ({ value: st, label: st.replace('_', ' ').replace(/^\w/, (c) => c.toUpperCase()) })),
+                            onChange: (v) => updateLabStatusBatch(group.ids, v),
+                          },
+                          {
+                            label: downloadingId === r.id ? 'Downloading…' : 'Download Form',
+                            icon: FileDown,
+                            hidden: !['reserved', 'in_use', 'completed'].includes(group.status),
+                            disabled: downloadingId === r.id,
+                            onClick: () => handleDownloadLabGroupForm(group),
+                          },
+                          {
+                            label: 'Messages',
+                            icon: MessageSquare,
+                            onClick: () => setMessagingItem({ type: 'lab', id: r.id, label: `Reservation #RC${String(r.id).padStart(5, '0')}`, reason: r.rejection_reason }),
+                          },
+                          { separator: true },
+                          { label: 'Delete', icon: Trash2, destructive: true, onClick: () => deleteLabGroup(group) },
+                        ]}
+                      />
                     </td>
                   </tr>
                   {isBatch && isGroupExpanded && (
@@ -643,32 +632,27 @@ const Reservations = () => {
                       {group.mixedStatus && <p className="text-[0.65rem] text-muted-foreground mt-1">Mixed — see breakdown</p>}
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex gap-1.5 flex-wrap items-center">
-                        {group.status === 'pending' ? (
-                          <>
-                            <button onClick={() => approveEqGroup(group)} className="bg-success text-success-foreground px-2 py-1 rounded text-xs font-semibold border-none cursor-pointer hover:brightness-110 inline-flex items-center gap-1">
-                              <Check className="w-3.5 h-3.5" /> Accept
-                            </button>
-                            <button onClick={() => setRejectingEqId(group.key)} className="bg-destructive text-destructive-foreground px-2 py-1 rounded text-xs font-semibold border-none cursor-pointer hover:brightness-110 inline-flex items-center gap-1">
-                              <X className="w-3.5 h-3.5" /> Reject
-                            </button>
-                          </>
-                        ) : (
-                          <select defaultValue={group.status} onChange={(e) => updateEqStatusBatch(group.ids, e.target.value)} className="px-2 py-1 border border-border rounded text-xs bg-card text-foreground">
-                            {['pending', 'reserved', 'in_use', 'completed', 'cancelled', 'rejected'].map((s) => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
-                          </select>
-                        )}
-                        <button
-                          onClick={() => setMessagingItem({ type: 'equipment', id: r.id, label: `Equipment request #EQ${String(r.id).padStart(5, '0')}`, reason: r.rejection_reason })}
-                          className="bg-primary/10 text-primary border border-primary/20 px-2 py-1 rounded text-xs font-semibold cursor-pointer hover:bg-primary hover:text-primary-foreground transition-colors"
-                          title="Messages"
-                        >
-                          <MessageSquare className="w-3.5 h-3.5" />
-                        </button>
-                        <button onClick={() => deleteEqGroup(group)} className="bg-destructive text-destructive-foreground px-2 py-1 rounded text-xs font-semibold border-none cursor-pointer hover:brightness-110">
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
+                      <RowActions
+                        items={[
+                          { label: 'Accept', icon: Check, success: true, hidden: group.status !== 'pending', onClick: () => approveEqGroup(group) },
+                          { label: 'Reject', icon: X, destructive: true, hidden: group.status !== 'pending', onClick: () => setRejectingEqId(group.key) },
+                          {
+                            label: 'Change status',
+                            icon: RefreshCw,
+                            hidden: group.status === 'pending',
+                            value: group.status,
+                            options: ['reserved', 'in_use', 'completed', 'cancelled'].map((st) => ({ value: st, label: st.replace('_', ' ').replace(/^\w/, (c) => c.toUpperCase()) })),
+                            onChange: (v) => updateEqStatusBatch(group.ids, v),
+                          },
+                          {
+                            label: 'Messages',
+                            icon: MessageSquare,
+                            onClick: () => setMessagingItem({ type: 'equipment', id: r.id, label: `Equipment request #EQ${String(r.id).padStart(5, '0')}`, reason: r.rejection_reason }),
+                          },
+                          { separator: true },
+                          { label: 'Delete', icon: Trash2, destructive: true, onClick: () => deleteEqGroup(group) },
+                        ]}
+                      />
                     </td>
                   </tr>
                   {isBatch && isGroupExpanded && (

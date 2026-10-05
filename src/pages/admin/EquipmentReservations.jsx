@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import StatusBadge from '@/components/StatusBadge';
 import { supabase } from '@/integrations/supabase/client';
-import { Trash2, CheckCircle, XCircle } from 'lucide-react';
+import { Trash2, CheckCircle, XCircle, RefreshCw } from 'lucide-react';
+import RowActions from '@/components/RowActions';
 
 
 const AdminEquipmentReservations = () => {
@@ -126,31 +127,22 @@ const AdminEquipmentReservations = () => {
                   </td>
                   <td className="px-4 py-3"><StatusBadge status={r.status} /></td>
                   <td className="px-4 py-3">
-                    <div className="flex gap-1.5 flex-wrap items-center">
-                      {r.status === 'pending' ? (
-                        <>
-                          <button
-                            onClick={() => approveReservation(r.id)}
-                            title="Approve"
-                            className="flex items-center gap-1 bg-success/10 text-success border border-success/30 px-2 py-1 rounded text-xs font-semibold cursor-pointer hover:bg-success hover:text-white transition-colors"
-                          >
-                            <CheckCircle className="w-3.5 h-3.5" /> Accept
-                          </button>
-                          <button
-                            onClick={() => setRejectingId(r.id)}
-                            title="Reject"
-                            className="flex items-center gap-1 bg-destructive/10 text-destructive border border-destructive/30 px-2 py-1 rounded text-xs font-semibold cursor-pointer hover:bg-destructive hover:text-white transition-colors"
-                          >
-                            <XCircle className="w-3.5 h-3.5" /> Reject
-                          </button>
-                        </>
-                      ) : (
-                        <select defaultValue={r.status} onChange={(e) => updateStatus(r.id, e.target.value)} className="px-2 py-1 border border-border rounded text-xs bg-card text-foreground">
-                          {['pending', 'reserved', 'in_use', 'completed', 'cancelled', 'rejected'].map((s) => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
-                        </select>
-                      )}
-                      <button onClick={() => deleteRes(r.id)} className="bg-destructive text-destructive-foreground px-2 py-1 rounded text-xs font-semibold border-none cursor-pointer hover:brightness-110"><Trash2 className="w-3.5 h-3.5" /></button>
-                    </div>
+                    <RowActions
+                      items={[
+                        { label: 'Accept', icon: CheckCircle, success: true, hidden: r.status !== 'pending', onClick: () => approveReservation(r.id) },
+                        { label: 'Reject', icon: XCircle, destructive: true, hidden: r.status !== 'pending', onClick: () => setRejectingId(r.id) },
+                        {
+                          label: 'Change status',
+                          icon: RefreshCw,
+                          hidden: r.status === 'pending',
+                          value: r.status,
+                          options: ['pending', 'reserved', 'in_use', 'completed', 'cancelled', 'rejected'].map((st) => ({ value: st, label: st.replace('_', ' ').replace(/^\w/, (c) => c.toUpperCase()) })),
+                          onChange: (v) => updateStatus(r.id, v),
+                        },
+                        { separator: true },
+                        { label: 'Delete', icon: Trash2, destructive: true, onClick: () => deleteRes(r.id) },
+                      ]}
+                    />
                   </td>
                 </tr>
               ) :

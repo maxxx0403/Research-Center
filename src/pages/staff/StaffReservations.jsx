@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { notifyReservationApproved, notifyReservationRejected } from '@/lib/notifications';
 import ReservationMessagesPanel from '@/components/ReservationMessagesPanel';
 import { logReservationAction } from '@/lib/activityLog';
+import RowActions from '@/components/RowActions';
 
 const STATUS_PRIORITY = ['rejected', 'pending', 'reserved', 'in_use', 'completed', 'cancelled'];
 
@@ -262,25 +263,17 @@ const StaffReservations = () => {
                   </td>
                   <td className="px-4 py-3"><StatusBadge status={group.status} /></td>
                   <td className="px-4 py-3">
-                    {group.status === 'pending' ?
-                  <div className="flex gap-1.5">
-                        <button onClick={() => approveLabGroup(group)} className="bg-success text-success-foreground px-2 py-1 rounded text-xs font-semibold border-none cursor-pointer hover:brightness-110 inline-flex items-center gap-1">
-                          <Check className="w-3.5 h-3.5" /> Accept
-                        </button>
-                        <button onClick={() => setRejectingId(group.key)} className="bg-destructive text-destructive-foreground px-2 py-1 rounded text-xs font-semibold border-none cursor-pointer hover:brightness-110 inline-flex items-center gap-1">
-                          <X className="w-3.5 h-3.5" /> Reject
-                        </button>
-                      </div> :
-
-                  <span className="text-xs text-muted-foreground italic">—</span>
-                  }
-                  <button
-                      onClick={() => setMessagingItem({ type: 'lab', id: r.id, label: `Reservation #RC${String(r.id).padStart(5, '0')}`, reason: r.rejection_reason })}
-                      className="mt-1.5 bg-primary/10 text-primary border border-primary/20 px-2 py-1 rounded text-xs font-semibold cursor-pointer hover:bg-primary hover:text-primary-foreground transition-colors"
-                      title="Messages"
-                    >
-                      <MessageSquare className="w-3.5 h-3.5" />
-                    </button>
+                    <RowActions
+                      items={[
+                        { label: 'Accept', icon: Check, success: true, hidden: group.status !== 'pending', onClick: () => approveLabGroup(group) },
+                        { label: 'Reject', icon: X, destructive: true, hidden: group.status !== 'pending', onClick: () => setRejectingId(group.key) },
+                        {
+                          label: 'Messages',
+                          icon: MessageSquare,
+                          onClick: () => setMessagingItem({ type: 'lab', id: r.id, label: `Reservation #RC${String(r.id).padStart(5, '0')}`, reason: r.rejection_reason }),
+                        },
+                      ]}
+                    />
                   </td>
                 </tr>
                 {isBatch && isGroupExpanded && (
@@ -371,25 +364,17 @@ const StaffReservations = () => {
                   </td>
                   <td className="px-4 py-3"><StatusBadge status={group.status} /></td>
                   <td className="px-4 py-3">
-                    {group.status === 'pending' ?
-                  <div className="flex gap-1.5">
-                        <button onClick={() => approveEqGroup(group)} className="bg-success text-success-foreground px-2 py-1 rounded text-xs font-semibold border-none cursor-pointer hover:brightness-110 inline-flex items-center gap-1">
-                          <Check className="w-3.5 h-3.5" /> Accept
-                        </button>
-                        <button onClick={() => setRejectingEqId(group.key)} className="bg-destructive text-destructive-foreground px-2 py-1 rounded text-xs font-semibold border-none cursor-pointer hover:brightness-110 inline-flex items-center gap-1">
-                          <X className="w-3.5 h-3.5" /> Reject
-                        </button>
-                      </div> :
-
-                  <span className="text-xs text-muted-foreground italic">—</span>
-                  }
-                  <button
-                      onClick={() => setMessagingItem({ type: 'equipment', id: r.id, label: `Equipment request #EQ${String(r.id).padStart(5, '0')}`, reason: r.rejection_reason })}
-                      className="mt-1.5 bg-primary/10 text-primary border border-primary/20 px-2 py-1 rounded text-xs font-semibold cursor-pointer hover:bg-primary hover:text-primary-foreground transition-colors"
-                      title="Messages"
-                    >
-                      <MessageSquare className="w-3.5 h-3.5" />
-                    </button>
+                    <RowActions
+                      items={[
+                        { label: 'Accept', icon: Check, success: true, hidden: group.status !== 'pending', onClick: () => approveEqGroup(group) },
+                        { label: 'Reject', icon: X, destructive: true, hidden: group.status !== 'pending', onClick: () => setRejectingEqId(group.key) },
+                        {
+                          label: 'Messages',
+                          icon: MessageSquare,
+                          onClick: () => setMessagingItem({ type: 'equipment', id: r.id, label: `Equipment request #EQ${String(r.id).padStart(5, '0')}`, reason: r.rejection_reason }),
+                        },
+                      ]}
+                    />
                   </td>
                 </tr>
                 {isBatch && isGroupExpanded && (

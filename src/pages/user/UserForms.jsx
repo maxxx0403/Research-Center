@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
-import { Download, Upload, FileText, Trash2, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Download, Upload, FileText, Trash2, CheckCircle2, AlertCircle, Eye } from 'lucide-react';
+import RowActions from '@/components/RowActions';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { validateUploadFile, sanitizeText } from '@/lib/validation';
@@ -206,7 +207,53 @@ const UserForms = () => {
               <p className="text-muted-foreground">No submissions yet. Download a form and submit it above.</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <>
+              {/* Phone / tablet: stacked cards */}
+              <div className="lg:hidden grid gap-3 p-4 sm:grid-cols-2">
+                {submissions.map((s) => {
+                  const { data: urlData } = supabase.storage.from('submissions').getPublicUrl(s.file_path);
+                  const statusColors = {
+                    'submitted': 'bg-warning/10 text-warning',
+                    'reviewed': 'bg-info/10 text-info',
+                    'approved': 'bg-success/10 text-success',
+                    'rejected': 'bg-destructive/10 text-destructive'
+                  };
+                  return (
+                    <div key={s.id} className="border border-border rounded-xl p-3.5 space-y-2">
+                      <div className="flex items-start justify-between gap-2">
+                        {urlData?.publicUrl ? (
+                          <a href={urlData.publicUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-primary font-semibold no-underline hover:underline text-sm min-w-0">
+                            <FileText className="w-4 h-4 flex-shrink-0" /> <span className="truncate">{s.file_name}</span>
+                          </a>
+                        ) : (
+                          <span className="inline-flex items-center gap-2 text-muted-foreground text-sm min-w-0">
+                            <FileText className="w-4 h-4 flex-shrink-0" /> <span className="truncate">{s.file_name}</span>
+                          </span>
+                        )}
+                        <RowActions
+                          items={[
+                            { label: 'View file', icon: Eye, href: urlData?.publicUrl, hidden: !urlData?.publicUrl },
+                            { separator: true },
+                            { label: 'Delete', icon: Trash2, destructive: true, onClick: () => handleDelete(s) },
+                          ]}
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground">{s.description || '—'}</p>
+                      <div className="flex items-center justify-between pt-1">
+                        <span className={`inline-block px-2.5 py-1 rounded-full text-xs font-semibold ${statusColors[s.status] || 'bg-muted text-muted-foreground'}`}>
+                          {s.status.charAt(0).toUpperCase() + s.status.slice(1)}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(s.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Desktop: table */}
+              <div className="hidden lg:block overflow-x-auto">
               <table className="w-full text-sm border-collapse">
                 <thead>
                   <tr className="bg-muted/50 border-b-2 border-border">
@@ -255,20 +302,21 @@ const UserForms = () => {
                           {new Date(s.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                         </td>
                         <td className="px-4 py-3">
-                          <button 
-                            onClick={() => handleDelete(s)} 
-                            className="text-destructive hover:text-destructive/80 bg-transparent border-none cursor-pointer p-1"
-                            title="Delete submission"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          <RowActions
+                            items={[
+                              { label: 'View file', icon: Eye, href: urlData?.publicUrl, hidden: !urlData?.publicUrl },
+                              { separator: true },
+                              { label: 'Delete', icon: Trash2, destructive: true, onClick: () => handleDelete(s) },
+                            ]}
+                          />
                         </td>
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
-            </div>
+              </div>
+            </>
           )}
         </div>
       </div>

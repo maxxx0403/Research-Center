@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
-import { Search, Plus, X, Pencil } from 'lucide-react';
+import { Search, Plus, X, Pencil, RefreshCw } from 'lucide-react';
+import RowActions from '@/components/RowActions';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 
-const EMPTY_EQ = { name: '', brand: '', model: '', laboratory_id: '', quantity: '1', status: 'available' };
+const EMPTY_EQ = { name: '', brand: '', model: '', laboratory_id: '', quantity: '1' };
 const inputCls = "w-full px-3 py-2.5 border border-border rounded-lg text-sm bg-card text-foreground focus:outline-none focus:border-primary";
 
 const StaffEquipment = () => {
@@ -53,8 +54,7 @@ const StaffEquipment = () => {
       brand: eq.brand || '',
       model: eq.model || '',
       laboratory_id: eq.laboratory_id ? String(eq.laboratory_id) : '',
-      quantity: String(eq.quantity),
-      status: eq.status
+      quantity: String(eq.quantity)
     });
     setShowModal(true);
   };
@@ -70,8 +70,7 @@ const StaffEquipment = () => {
       brand: form.brand.trim() || null,
       model: form.model.trim() || null,
       laboratory_id: Number(form.laboratory_id),
-      quantity: qty,
-      status: form.status
+      quantity: qty
     };
 
     if (editTarget) {
@@ -80,7 +79,7 @@ const StaffEquipment = () => {
       if (error) { toast.error('Failed to update: ' + error.message); return; }
       toast.success(`${payload.name} updated.`);
     } else {
-      const { error } = await supabase.from('equipment').insert({ ...payload, available_quantity: qty });
+      const { error } = await supabase.from('equipment').insert({ ...payload, status: 'available', available_quantity: qty });
       setSaving(false);
       if (error) { toast.error('Failed to add: ' + error.message); return; }
       toast.success(`${payload.name} added.`);
@@ -133,26 +132,27 @@ const StaffEquipment = () => {
                 <td className="px-4 py-3 text-muted-foreground">{e.laboratories?.lab_code || '—'}</td>
                 <td className="px-4 py-3">{e.available_quantity} / {e.quantity}</td>
                 <td className="px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <select
-                    value={e.status}
-                    onChange={async (ev) => {
-                      const newStatus = ev.target.value;
-                      const { error } = await supabase.from('equipment').update({ status: newStatus }).eq('id', e.id);
-                      if (error) { toast.error('Failed to update status'); return; }
-                      setEquipment((prev) => prev.map((eq) => eq.id === e.id ? { ...eq, status: newStatus } : eq));
-                      toast.success(`Status updated to ${newStatus}`);
-                    }}
-                    className="text-xs px-2 py-1 border border-border rounded-lg bg-card text-foreground">
-
-                      <option value="available">Available</option>
-                      <option value="maintenance">Under Maintenance</option>
-                      <option value="in_use">In Use</option>
-                    </select>
-                    <button onClick={() => openEdit(e)} className="p-1.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors border-none cursor-pointer" title="Edit">
-                      <Pencil className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
+                  <RowActions
+                    items={[
+                      { label: 'Edit', icon: Pencil, onClick: () => openEdit(e) },
+                      {
+                        label: 'Change status',
+                        icon: RefreshCw,
+                        value: e.status,
+                        options: [
+                          { value: 'available', label: 'Available' },
+                          { value: 'maintenance', label: 'Under Maintenance' },
+                          { value: 'in_use', label: 'In Use' },
+                        ],
+                        onChange: async (newStatus) => {
+                          const { error } = await supabase.from('equipment').update({ status: newStatus }).eq('id', e.id);
+                          if (error) { toast.error('Failed to update status'); return; }
+                          setEquipment((prev) => prev.map((eq) => eq.id === e.id ? { ...eq, status: newStatus } : eq));
+                          toast.success(`Status updated to ${newStatus}`);
+                        },
+                      },
+                    ]}
+                  />
                 </td>
               </tr>
             )}
@@ -195,14 +195,6 @@ const StaffEquipment = () => {
                   <label className="block text-xs font-semibold text-foreground mb-1">Quantity</label>
                   <input name="quantity" type="number" min="1" value={form.quantity} onChange={handleChange} className={inputCls} />
                 </div>
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-foreground mb-1">Status</label>
-                <select name="status" value={form.status} onChange={handleChange} className={inputCls}>
-                  <option value="available">Available</option>
-                  <option value="maintenance">Under Maintenance</option>
-                  <option value="in_use">In Use</option>
-                </select>
               </div>
               <div className="flex gap-3 justify-end pt-2">
                 <button type="button" onClick={() => { setShowModal(false); setEditTarget(null); }} className="px-4 py-2 rounded-lg border border-border hover:bg-muted text-sm font-semibold cursor-pointer bg-transparent text-foreground">Cancel</button>

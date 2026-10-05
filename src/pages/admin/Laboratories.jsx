@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Plus, X, Pencil, Trash2, Search, Minus, UserPlus } from 'lucide-react';
+import { Plus, X, Pencil, Trash2, Search, Minus, UserPlus, RefreshCw } from 'lucide-react';
+import RowActions from '@/components/RowActions';
 import StatusBadge from '@/components/StatusBadge';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -89,9 +90,9 @@ const Laboratories = () => {
   };
 
   // Manually adjust how many people are currently inside a lab. The room's
-  // status follows this count: it becomes "occupied" as soon as someone's
-  // inside, and back to "available" once it's empty. A room under
-  // maintenance keeps that status regardless of occupancy.
+  // status follows this count: it stays "available" while there's still room,
+  // and becomes "occupied" only once it's full (current === max capacity).
+  // A room under maintenance keeps that status regardless of occupancy.
   const adjustOccupancy = async (lab, delta) => {
     const current = lab.current_occupancy ?? 0;
     const max = lab.max_capacity || 0;
@@ -100,7 +101,7 @@ const Laboratories = () => {
 
     const updates = { current_occupancy: next };
     if (lab.status !== 'maintenance') {
-      updates.status = next > 0 ? 'occupied' : 'available';
+      updates.status = max > 0 && next >= max ? 'occupied' : 'available';
     }
 
     const { error } = await supabase.from('laboratories').update(updates).eq('id', lab.id);
@@ -154,12 +155,28 @@ const Laboratories = () => {
                 </div>
                 <div className="flex items-center gap-2">
                   <StatusBadge status={lab.status} />
-                  <button onClick={() => openEdit(lab)} className="p-1.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors border-none cursor-pointer" title="Edit">
-                    <Pencil className="w-3.5 h-3.5" />
-                  </button>
-                  <button onClick={() => setDeleteTarget(lab)} className="p-1.5 rounded-lg bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors border-none cursor-pointer" title="Delete">
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                  <RowActions
+                    items={[
+                      { label: 'Edit', icon: Pencil, onClick: () => openEdit(lab) },
+                      {
+                        label: 'Change status',
+                        icon: RefreshCw,
+                        value: lab.status,
+                        options: [
+                          { value: 'available', label: 'Available' },
+                          { value: 'maintenance', label: 'Under Maintenance' },
+                        ],
+                        onChange: async (st) => {
+                          const { error } = await supabase.from('laboratories').update({ status: st }).eq('id', lab.id);
+                          if (error) { toast.error('Failed to update status'); return; }
+                          setLabs((prev) => prev.map((l) => l.id === lab.id ? { ...l, status: st } : l));
+                          toast.success(`Status updated to ${st}`);
+                        },
+                      },
+                      { separator: true },
+                      { label: 'Delete', icon: Trash2, destructive: true, onClick: () => setDeleteTarget(lab) },
+                    ]}
+                  />
                 </div>
               </div>
               <div className="p-5 space-y-4">
@@ -195,23 +212,6 @@ const Laboratories = () => {
                 {lab.equipment_list && (
                   <div className="text-xs text-muted-foreground"><strong className="text-foreground">Equipment:</strong> {lab.equipment_list}</div>
                 )}
-                <div className="flex gap-2 pt-2 border-t border-border">
-                  {['available', 'maintenance'].map((s) =>
-                    <button
-                      key={s}
-                      disabled={lab.status === s}
-                      onClick={async () => {
-                        const { error } = await supabase.from('laboratories').update({ status: s }).eq('id', lab.id);
-                        if (error) { toast.error('Failed to update status'); return; }
-                        setLabs((prev) => prev.map((l) => l.id === lab.id ? { ...l, status: s } : l));
-                        toast.success(`Status updated to ${s}`);
-                      }}
-                      className={`flex-1 text-xs font-semibold py-1.5 rounded-lg transition-colors ${lab.status === s ? 'bg-primary/20 text-primary cursor-default' : 'bg-muted hover:bg-muted/80 text-muted-foreground'}`}
-                    >
-                      {s === 'maintenance' ? 'Under Maintenance' : s.charAt(0).toUpperCase() + s.slice(1)}
-                    </button>
-                  )}
-                </div>
               </div>
             </div>
           );

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { CalendarCheck, Hourglass, FlaskConical, Package } from 'lucide-react';
+import { Hourglass, FlaskConical, Package } from 'lucide-react';
 import StatusBadge from '@/components/StatusBadge';
 import ReservationCalendarView from '@/components/ReservationCalendarView';
 import { supabase } from '@/integrations/supabase/client';
@@ -9,22 +9,23 @@ const Dashboard = () => {
   const [labs, setLabs] = useState([]);
   const [reservations, setReservations] = useState([]);
   const [equipCount, setEquipCount] = useState(0);
-  const [eqResCount, setEqResCount] = useState(0);
+  const [pendingCount, setPendingCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [selectedLabId, setSelectedLabId] = useState(null);
 
   useEffect(() => {
     const fetch = async () => {
-      const [{ data: labData }, { data: resData }, { count: eqC }, { count: eqrC }] = await Promise.all([
+      const [{ data: labData }, { data: resData }, { count: eqC }, { count: pendLab }, { count: pendEq }] = await Promise.all([
         supabase.from('laboratories').select('*').order('id'),
         supabase.from('reservations').select('id, researcher_name, email, status, created_at, laboratories(lab_name, lab_code)').order('created_at', { ascending: false }).limit(5),
         supabase.from('equipment').select('*', { count: 'exact', head: true }),
-        supabase.from('equipment_reservations').select('*', { count: 'exact', head: true }),
+        supabase.from('reservations').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
+        supabase.from('equipment_reservations').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
       ]);
       setLabs(labData || []);
       setReservations(resData || []);
       setEquipCount(eqC || 0);
-      setEqResCount(eqrC || 0);
+      setPendingCount((pendLab || 0) + (pendEq || 0));
       setLoading(false);
     };
     fetch();
@@ -32,11 +33,11 @@ const Dashboard = () => {
 
   const availLabs = labs.filter((l) => l.status === 'available').length;
 
+  // Only the cards an admin actually acts on / checks at a glance.
   const stats = [
-    { icon: CalendarCheck, label: 'Total Labs', value: labs.length, color: 'bg-primary/10 text-primary' },
+    { icon: Hourglass, label: 'Pending Requests', value: pendingCount, color: 'bg-warning/10 text-warning' },
     { icon: FlaskConical, label: 'Labs Available', value: `${availLabs} / ${labs.length}`, color: 'bg-success/10 text-success' },
     { icon: Package, label: 'Equipment Items', value: equipCount, color: 'bg-accent/10 text-accent' },
-    { icon: Hourglass, label: 'Equipment Reservations', value: eqResCount, color: 'bg-warning/10 text-warning' },
   ];
 
   return (
@@ -82,32 +83,56 @@ const Dashboard = () => {
           <h2 className="font-heading text-sm font-bold">Recent Reservations</h2>
           <Link to="/admin/reservations" className="bg-muted text-muted-foreground border border-border px-3 py-1.5 rounded-lg text-xs font-semibold no-underline hover:bg-border transition-colors">View All</Link>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm border-collapse">
-            <thead>
-              <tr className="bg-muted/50 border-b-2 border-border">
-                <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">ID</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Researcher</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Laboratory</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Status</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Submitted</th>
-              </tr>
-            </thead>
-            <tbody>
-              {reservations.length ? reservations.map((r) => (
-                <tr key={r.id} className="border-b border-muted hover:bg-muted/30">
-                  <td className="px-4 py-3 font-semibold text-xs">#RC{String(r.id).padStart(5, '0')}</td>
-                  <td className="px-4 py-3"><div className="font-semibold">{r.researcher_name}</div><div className="text-xs text-muted-foreground">{r.email}</div></td>
-                  <td className="px-4 py-3">{r.laboratories?.lab_name}<br /><code className="text-[0.7rem] bg-muted px-1 py-0.5 rounded">{r.laboratories?.lab_code}</code></td>
-                  <td className="px-4 py-3"><StatusBadge status={r.status} /></td>
-                  <td className="px-4 py-3 text-xs text-muted-foreground">{new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
-                </tr>
-              )) : (
-                <tr><td colSpan={5} className="text-center py-8 text-muted-foreground">No reservations yet</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        {reservations.length === 0 ? (
+          <div className="text-center py-8 text-muted-foreground">No reservations yet</div>
+        ) : (
+          <>
+            {/* Phone / tablet: stacked cards */}
+            <div className="sm:hidden divide-y divide-muted">
+              {reservations.map((r) => (
+                <div key={r.id} className="px-4 py-3 space-y-1.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="font-semibold text-sm">{r.researcher_name}</div>
+                      <div className="text-xs text-muted-foreground">{r.email}</div>
+                    </div>
+                    <StatusBadge status={r.status} />
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>#RC{String(r.id).padStart(5, '0')} · {r.laboratories?.lab_name}</span>
+                    <span>{new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Tablet+: table */}
+            <div className="hidden sm:block overflow-x-auto">
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr className="bg-muted/50 border-b-2 border-border">
+                    <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">ID</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Researcher</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Laboratory</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Status</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Submitted</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reservations.map((r) => (
+                    <tr key={r.id} className="border-b border-muted hover:bg-muted/30">
+                      <td className="px-4 py-3 font-semibold text-xs">#RC{String(r.id).padStart(5, '0')}</td>
+                      <td className="px-4 py-3"><div className="font-semibold">{r.researcher_name}</div><div className="text-xs text-muted-foreground">{r.email}</div></td>
+                      <td className="px-4 py-3">{r.laboratories?.lab_name}<br /><code className="text-[0.7rem] bg-muted px-1 py-0.5 rounded">{r.laboratories?.lab_code}</code></td>
+                      <td className="px-4 py-3"><StatusBadge status={r.status} /></td>
+                      <td className="px-4 py-3 text-xs text-muted-foreground">{new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

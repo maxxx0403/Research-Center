@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { FileText, Eye, Trash2, Search, Calendar, Clock, Plus, ChevronLeft, ChevronRight, AlertCircle } from 'lucide-react';
+import { FileText, Eye, Trash2, Search, Calendar, Clock, Plus, ChevronLeft, ChevronRight, AlertCircle, RefreshCw } from 'lucide-react';
+import RowActions from '@/components/RowActions';
 import { supabase } from '@/integrations/supabase/client';
 
 const SubmissionRow = ({ s, onStatusChange, onDelete }) => {
@@ -39,43 +40,70 @@ const SubmissionRow = ({ s, onStatusChange, onDelete }) => {
       </td>
       <td className="px-4 py-3 text-xs text-muted-foreground max-w-[200px] truncate">{s.description || '—'}</td>
       <td className="px-4 py-3">
-        <select 
-          value={s.status} 
-          onChange={(e) => onStatusChange(s.id, e.target.value)}
-          className={`px-3 py-1.5 border-2 rounded-lg text-xs font-medium bg-card text-foreground focus:outline-none focus:border-primary cursor-pointer transition-colors ${statusColors[s.status] || 'border-border'}`}
-        >
-          <option value="submitted">Submitted</option>
-          <option value="reviewed">Reviewed</option>
-          <option value="approved">Approved</option>
-          <option value="rejected">Rejected</option>
-        </select>
+        <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold capitalize ${statusColors[s.status] || 'bg-muted text-muted-foreground'}`}>{s.status}</span>
       </td>
       <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
         {new Date(s.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
       </td>
       <td className="px-4 py-3">
-        <div className="flex items-center gap-2">
-          {url && (
-            <a 
-              href={url} 
-              target="_blank" 
-              rel="noreferrer" 
-              className="text-primary hover:text-primary/80 p-1"
-              title="View file"
-            >
-              <Eye className="w-4 h-4" />
-            </a>
-          )}
-          <button 
-            onClick={() => onDelete(s)} 
-            className="text-destructive hover:text-destructive/80 bg-transparent border-none cursor-pointer p-1"
-            title="Delete submission"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
-        </div>
+        <RowActions
+          items={[
+            { label: 'View file', icon: Eye, href: url, hidden: !url },
+            { label: 'Change status', icon: RefreshCw, value: s.status, options: [{ value: 'submitted', label: 'Submitted' }, { value: 'reviewed', label: 'Reviewed' }, { value: 'approved', label: 'Approved' }, { value: 'rejected', label: 'Rejected' }], onChange: (v) => onStatusChange(s.id, v) },
+            { separator: true },
+            { label: 'Delete', icon: Trash2, destructive: true, onClick: () => onDelete(s) },
+          ]}
+        />
       </td>
     </tr>
+  );
+};
+
+const SubmissionCard = ({ s, onStatusChange, onDelete }) => {
+  const [url, setUrl] = useState('');
+
+  useEffect(() => {
+    supabase.storage.from('submissions').createSignedUrl(s.file_path, 3600).then(({ data }) => {
+      if (data) setUrl(data.signedUrl);
+    });
+  }, [s.file_path]);
+
+  const statusColors = {
+    'submitted': 'bg-warning/10 text-warning',
+    'reviewed': 'bg-info/10 text-info',
+    'approved': 'bg-success/10 text-success',
+    'rejected': 'bg-destructive/10 text-destructive'
+  };
+
+  return (
+    <div className="border border-border rounded-xl p-3.5 space-y-2">
+      <div className="flex items-start justify-between gap-2">
+        {url ? (
+          <a href={url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-primary font-semibold no-underline hover:underline text-sm min-w-0">
+            <FileText className="w-4 h-4 flex-shrink-0" /> <span className="truncate">{s.file_name}</span>
+          </a>
+        ) : (
+          <span className="inline-flex items-center gap-2 text-sm text-muted-foreground min-w-0">
+            <FileText className="w-4 h-4 flex-shrink-0" /> <span className="truncate">{s.file_name}</span>
+          </span>
+        )}
+        <RowActions
+          items={[
+            { label: 'View file', icon: Eye, href: url, hidden: !url },
+            { label: 'Change status', icon: RefreshCw, value: s.status, options: [{ value: 'submitted', label: 'Submitted' }, { value: 'reviewed', label: 'Reviewed' }, { value: 'approved', label: 'Approved' }, { value: 'rejected', label: 'Rejected' }], onChange: (v) => onStatusChange(s.id, v) },
+            { separator: true },
+            { label: 'Delete', icon: Trash2, destructive: true, onClick: () => onDelete(s) },
+          ]}
+        />
+      </div>
+      <p className="text-xs text-muted-foreground">{s.description || '—'}</p>
+      <div className="flex items-center justify-between gap-2 pt-1">
+        <span className="text-xs text-muted-foreground">
+          {s.user_id.slice(0, 8)}… · {new Date(s.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+        </span>
+        <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold capitalize ${statusColors[s.status] || 'bg-muted text-muted-foreground'}`}>{s.status}</span>
+      </div>
+    </div>
   );
 };
 
@@ -263,9 +291,20 @@ const AdminSubmissions = () => {
             </select>
           </div>
 
-          {/* Submissions Table */}
+          {/* Submissions: cards on phone/tablet, table on desktop */}
           <div className="bg-card rounded-xl shadow-card overflow-hidden">
-            <div className="overflow-x-auto">
+            {loading ? (
+              <div className="text-center py-12 text-muted-foreground">Loading…</div>
+            ) : filtered.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground">No submissions found</div>
+            ) : (
+              <>
+                <div className="lg:hidden grid gap-3 p-4 sm:grid-cols-2">
+                  {filtered.map((s) => (
+                    <SubmissionCard key={s.id} s={s} onStatusChange={updateStatus} onDelete={handleDelete} />
+                  ))}
+                </div>
+                <div className="hidden lg:block overflow-x-auto">
               <table className="w-full text-sm border-collapse">
                 <thead>
                   <tr className="bg-muted/50 border-b-2 border-border">
@@ -278,29 +317,19 @@ const AdminSubmissions = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {loading ? (
-                    <tr>
-                      <td colSpan={6} className="text-center py-12 text-muted-foreground">Loading…</td>
-                    </tr>
-                  ) : filtered.length ? (
-                    filtered.map((s) =>
-                      <SubmissionRow 
-                        key={s.id} 
-                        s={s} 
-                        onStatusChange={updateStatus} 
-                        onDelete={handleDelete} 
-                      />
-                    )
-                  ) : (
-                    <tr>
-                      <td colSpan={6} className="text-center py-12 text-muted-foreground">
-                        No submissions found
-                      </td>
-                    </tr>
+                  {filtered.map((s) =>
+                    <SubmissionRow 
+                      key={s.id} 
+                      s={s} 
+                      onStatusChange={updateStatus} 
+                      onDelete={handleDelete} 
+                    />
                   )}
                 </tbody>
               </table>
-            </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
 

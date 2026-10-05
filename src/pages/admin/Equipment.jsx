@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
-import { Search, Plus, X, Pencil, Trash2, AlertTriangle } from 'lucide-react';
+import { Search, Plus, X, Pencil, Trash2, AlertTriangle, RefreshCw } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { notifyEquipmentRemoved } from '@/lib/notifications';
+import RowActions from '@/components/RowActions';
 
 const ACTIVE_STATUSES = ['pending', 'reserved', 'in_use'];
 
-const EMPTY_EQ = { name: '', brand: '', model: '', laboratory_id: '', quantity: '1', status: 'available' };
+const EMPTY_EQ = { name: '', brand: '', model: '', laboratory_id: '', quantity: '1' };
 const inputCls = "w-full px-3 py-2.5 border border-border rounded-lg text-sm bg-card text-foreground focus:outline-none focus:border-primary";
 
 const AdminEquipment = () => {
@@ -72,7 +73,6 @@ const AdminEquipment = () => {
       model: eq.model || '',
       laboratory_id: eq.laboratory_id ? String(eq.laboratory_id) : '',
       quantity: String(eq.quantity),
-      status: eq.status,
     });
     setShowModal(true);
   };
@@ -88,7 +88,6 @@ const AdminEquipment = () => {
       model: form.model.trim() || null,
       laboratory_id: form.laboratory_id ? Number(form.laboratory_id) : null,
       quantity: qty,
-      status: form.status,
     };
 
     if (editTarget) {
@@ -98,7 +97,7 @@ const AdminEquipment = () => {
       setEquipment((prev) => prev.map((e) => e.id === editTarget.id ? data : e));
       toast.success(`${data.name} updated successfully!`);
     } else {
-      const { data, error } = await supabase.from('equipment').insert({ ...payload, available_quantity: qty }).select('*, laboratories(lab_name, lab_code)').single();
+      const { data, error } = await supabase.from('equipment').insert({ ...payload, status: 'available', available_quantity: qty }).select('*, laboratories(lab_name, lab_code)').single();
       setSaving(false);
       if (error) { toast.error('Failed to add: ' + error.message); return; }
       setEquipment((prev) => [...prev, data]);
@@ -192,29 +191,29 @@ const AdminEquipment = () => {
                     </td>
                     <td className="px-4 py-3 text-sm font-semibold">{e.quantity}</td>
                     <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <select
-                          value={e.status}
-                          onChange={async (ev) => {
-                            const newStatus = ev.target.value;
-                            const { error } = await supabase.from('equipment').update({ status: newStatus }).eq('id', e.id);
-                            if (error) { toast.error('Failed to update status'); return; }
-                            setEquipment((prev) => prev.map((eq) => eq.id === e.id ? { ...eq, status: newStatus } : eq));
-                            toast.success(`Status updated to ${newStatus}`);
-                          }}
-                          className="text-xs px-2 py-1 border border-border rounded-lg bg-card text-foreground"
-                        >
-                          <option value="available">Available</option>
-                          <option value="maintenance">Under Maintenance</option>
-                          <option value="in_use">In Use</option>
-                        </select>
-                        <button onClick={() => openEdit(e)} className="p-1.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors border-none cursor-pointer" title="Edit">
-                          <Pencil className="w-3.5 h-3.5" />
-                        </button>
-                        <button onClick={() => setDeleteTarget(e)} className="p-1.5 rounded-lg bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors border-none cursor-pointer" title="Delete">
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
+                      <RowActions
+                        items={[
+                          { label: 'Edit', icon: Pencil, onClick: () => openEdit(e) },
+                          {
+                            label: 'Change status',
+                            icon: RefreshCw,
+                            value: e.status,
+                            options: [
+                              { value: 'available', label: 'Available' },
+                              { value: 'maintenance', label: 'Under Maintenance' },
+                              { value: 'in_use', label: 'In Use' },
+                            ],
+                            onChange: async (newStatus) => {
+                              const { error } = await supabase.from('equipment').update({ status: newStatus }).eq('id', e.id);
+                              if (error) { toast.error('Failed to update status'); return; }
+                              setEquipment((prev) => prev.map((eq) => eq.id === e.id ? { ...eq, status: newStatus } : eq));
+                              toast.success(`Status updated to ${newStatus}`);
+                            },
+                          },
+                          { separator: true },
+                          { label: 'Delete', icon: Trash2, destructive: true, onClick: () => setDeleteTarget(e) },
+                        ]}
+                      />
                     </td>
                   </tr>
                 ) :
@@ -260,14 +259,6 @@ const AdminEquipment = () => {
                   <label className="block text-xs font-semibold text-foreground mb-1">Quantity</label>
                   <input name="quantity" type="number" min="1" value={form.quantity} onChange={handleChange} className={inputCls} />
                 </div>
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-foreground mb-1">Status</label>
-                <select name="status" value={form.status} onChange={handleChange} className={inputCls}>
-                  <option value="available">Available</option>
-                  <option value="maintenance">Under Maintenance</option>
-                  <option value="in_use">In Use</option>
-                </select>
               </div>
               <div className="flex gap-3 justify-end pt-2">
                 <button type="button" onClick={() => { setShowModal(false); setEditTarget(null); }} className="px-4 py-2 rounded-lg border border-border hover:bg-muted text-sm font-semibold cursor-pointer bg-transparent text-foreground">Cancel</button>
