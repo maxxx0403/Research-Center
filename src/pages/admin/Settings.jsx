@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import RowActions from '@/components/RowActions';
+import { logStaffAccountAction } from '@/lib/activityLog';
 
 const inputCls = "w-full px-3 py-2.5 border border-border rounded-lg text-sm bg-card text-foreground focus:outline-none focus:border-primary";
 const EMPTY_STAFF = { full_name: '', email: '', password: '', room_ids: [] };
@@ -127,6 +128,7 @@ const AdminSettings = () => {
       return;
     }
 
+    logStaffAccountAction({ userId: user.id, targetUserId: data?.user_id, verb: 'Created', targetLabel: form.full_name.trim() || form.email.trim(), laboratoryIds: form.room_ids });
     toast.success(`Staff account created for ${form.email}`);
     setForm(EMPTY_STAFF);
     loadStaff();
@@ -217,6 +219,7 @@ const AdminSettings = () => {
       return;
     }
 
+    logStaffAccountAction({ userId: user.id, targetUserId: editingStaff.user_id, verb: 'Updated rooms of', targetLabel: editingStaff.email, laboratoryIds: editingStaff.room_ids });
     toast.success(`Rooms updated for ${editingStaff.email}`);
     setEditingStaff(null);
     loadStaff();
@@ -232,6 +235,7 @@ const AdminSettings = () => {
       toast.error('Failed to remove staff: ' + message);
       return;
     }
+    logStaffAccountAction({ userId: user.id, targetUserId: member.user_id, verb: 'Removed', targetLabel: member.email });
     toast.success(`${member.email} removed.`);
     setStaff((prev) => prev.filter((s) => s.user_id !== member.user_id));
   };

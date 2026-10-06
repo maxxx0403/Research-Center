@@ -73,11 +73,11 @@ const Reservations = () => {
       const [{ data: labData, error: labErr }, { data: eqData, error: eqErr }] = await Promise.all([
         supabase
           .from('reservations')
-          .select('id, researcher_name, email, phone, unit_college, adviser_name, study_title, stakeholder_type, status, approved_at, rejection_reason, start_datetime, end_datetime, members_list, batch_id, created_at, laboratories(lab_name, lab_code, floor), reservation_equipment(id, quantity_reserved, equipment(id, name, brand, model))')
+          .select('id, researcher_name, email, phone, unit_college, adviser_name, study_title, stakeholder_type, status, approved_at, rejection_reason, start_datetime, end_datetime, members_list, batch_id, created_at, laboratories(id, lab_name, lab_code, floor), reservation_equipment(id, quantity_reserved, equipment(id, name, brand, model))')
           .order('created_at', { ascending: false }),
         supabase
           .from('equipment_reservations')
-          .select('id, researcher_name, email, purpose, quantity_reserved, start_datetime, end_datetime, status, rejection_reason, created_at, batch_id, members_list, equipment(name, brand, laboratories(lab_code, floor))')
+          .select('id, researcher_name, email, purpose, quantity_reserved, start_datetime, end_datetime, status, rejection_reason, created_at, batch_id, members_list, equipment(name, brand, laboratory_id, laboratories(id, lab_code, floor))')
           .order('created_at', { ascending: false }),
       ]);
       if (labErr || eqErr) throw labErr || eqErr;
@@ -94,7 +94,7 @@ const Reservations = () => {
   const fetchLabData = async () => {
     const { data } = await supabase
       .from('reservations')
-      .select('id, user_id, researcher_name, email, phone, unit_college, adviser_name, study_title, stakeholder_type, status, approved_at, rejection_reason, start_datetime, end_datetime, members_list, batch_id, laboratories(lab_name, lab_code, floor), reservation_equipment(id, quantity_reserved, equipment(id, name, brand, model))')
+      .select('id, user_id, researcher_name, email, phone, unit_college, adviser_name, study_title, stakeholder_type, status, approved_at, rejection_reason, start_datetime, end_datetime, members_list, batch_id, laboratories(id, lab_name, lab_code, floor), reservation_equipment(id, quantity_reserved, equipment(id, name, brand, model))')
       .order('created_at', { ascending: false });
     setLabItems(data || []);
     setLabLoading(false);
@@ -103,7 +103,7 @@ const Reservations = () => {
   const fetchEqData = async () => {
     const { data } = await supabase
       .from('equipment_reservations')
-      .select('id, user_id, researcher_name, email, purpose, quantity_reserved, start_datetime, end_datetime, status, rejection_reason, created_at, batch_id, members_list, equipment(name, brand, laboratories(lab_code, floor))')
+      .select('id, user_id, researcher_name, email, purpose, quantity_reserved, start_datetime, end_datetime, status, rejection_reason, created_at, batch_id, members_list, equipment(name, brand, laboratory_id, laboratories(id, lab_code, floor))')
       .order('created_at', { ascending: false });
     setEqItems(data || []);
     setEqLoading(false);

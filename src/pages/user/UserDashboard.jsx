@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { CalendarCheck, FlaskConical, Hourglass, CheckCircle2, XCircle, User } from 'lucide-react';
+import { CalendarCheck, FlaskConical, CheckCircle2, XCircle, User } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import StatusBadge from '@/components/StatusBadge';
@@ -25,7 +25,9 @@ const UserDashboard = () => {
   }, [user]);
 
   const total = reservations.length;
-  const active = reservations.filter((r) => ['reserved', 'in_use'].includes(r.status)).length;
+  // Approved = already approved by admin (reserved / in use / completed)
+  const approved = reservations.filter((r) => ['reserved', 'in_use', 'completed'].includes(r.status)).length;
+  const rejected = reservations.filter((r) => r.status === 'rejected').length;
   const completed = reservations.filter((r) => r.status === 'completed').length;
   const cancelled = reservations.filter((r) => r.status === 'cancelled').length;
   const displayName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Researcher';
@@ -36,7 +38,7 @@ const UserDashboard = () => {
       <div className="rounded-3xl gradient-hero border border-primary/10 p-4 sm:p-6 space-y-6">
 
         {/* Profile row */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-card rounded-2xl p-5 shadow-card flex items-center gap-3">
             <div className="w-14 h-14 rounded-full bg-accent/15 flex items-center justify-center flex-shrink-0">
               <User className="w-7 h-7 text-accent" />
@@ -54,10 +56,17 @@ const UserDashboard = () => {
             </div>
           </div>
           <div className="bg-card rounded-2xl p-5 shadow-card flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-warning/10 text-warning flex items-center justify-center flex-shrink-0"><Hourglass className="w-6 h-6" /></div>
+            <div className="w-12 h-12 rounded-xl bg-success/10 text-success flex items-center justify-center flex-shrink-0"><CheckCircle2 className="w-6 h-6" /></div>
             <div>
-              <h3 className="font-heading text-2xl font-bold text-foreground leading-none">{loading ? '…' : active}</h3>
-              <p className="text-xs text-muted-foreground mt-1">Active</p>
+              <h3 className="font-heading text-2xl font-bold text-foreground leading-none">{loading ? '…' : approved}</h3>
+              <p className="text-xs text-muted-foreground mt-1">Total Approved</p>
+            </div>
+          </div>
+          <div className="bg-card rounded-2xl p-5 shadow-card flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-destructive/10 text-destructive flex items-center justify-center flex-shrink-0"><XCircle className="w-6 h-6" /></div>
+            <div>
+              <h3 className="font-heading text-2xl font-bold text-foreground leading-none">{loading ? '…' : rejected}</h3>
+              <p className="text-xs text-muted-foreground mt-1">Total Rejected</p>
             </div>
           </div>
         </div>

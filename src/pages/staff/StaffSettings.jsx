@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 const inputCls = "w-full px-3 py-2.5 border border-border rounded-lg text-sm bg-card text-foreground focus:outline-none focus:border-primary";
 
 const StaffSettings = () => {
-  const { user, assignedRooms } = useAuth();
+  const { user } = useAuth();
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [saving, setSaving] = useState(false);
@@ -39,11 +39,6 @@ const StaffSettings = () => {
 
   return (
     <div className="max-w-md space-y-5">
-      <div>
-        <h2 className="font-heading text-lg font-bold">Settings</h2>
-        <p className="text-xs text-muted-foreground">{assignedRooms.length ? assignedRooms.map((r) => r.lab_name).join(', ') : 'all rooms'}</p>
-      </div>
-
       {saved &&
       <div className="bg-success/10 border border-success/25 text-success rounded-xl p-4 flex items-center gap-2 font-medium text-sm">
           <CheckCircle2 className="w-5 h-5" /> Password updated successfully.

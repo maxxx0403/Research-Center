@@ -3,6 +3,7 @@ import { useSearchParams, Link } from 'react-router-dom';
 import { FlaskConical, Info, CheckCircle2, Package, X, Plus, Trash2, Clock, Users, AlertCircle, Hash } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import BookingDateTimeInput from '@/components/BookingDateTimeInput';
 import {
   checkLabReservationConflict,
   checkEquipmentAvailability,
@@ -110,10 +111,13 @@ const UserReserve = () => {
     );
   };
 
+  const digitsOnly = (v) => (v || '').replace(/\D/g, '');
+
   const addMember = () => setMembers([...members, { name: '', studentNumber: '' }]);
   const removeMember = (idx) => setMembers(members.filter((_, i) => i !== idx));
   const updateMember = (idx, field, value) => {
     const updated = [...members];
+    if (field === 'studentNumber') value = digitsOnly(value);
     updated[idx] = { ...updated[idx], [field]: value };
     setMembers(updated);
   };
@@ -129,6 +133,11 @@ const UserReserve = () => {
 
     if (!studentId || !studentId.toString().trim()) {
       triggerError('Please fill in the Student Number / ID Number field.');
+      return;
+    }
+
+    if (!/^\d+$/.test(studentId.toString().trim())) {
+      triggerError('Student Number / ID Number must contain numbers only.');
       return;
     }
 
@@ -444,8 +453,9 @@ const UserReserve = () => {
                 name="researcher_name"
                 required
                 placeholder="e.g. Juan Dela Cruz"
-                defaultValue={user?.user_metadata?.full_name || ''}
-                className={inputClass}
+                value={user?.user_metadata?.full_name || user?.email?.split('@')[0] || ''}
+                readOnly
+                className={`${inputClass} bg-muted/50 cursor-not-allowed`}
               />
             </div>
             <div>
@@ -455,6 +465,9 @@ const UserReserve = () => {
               <input
                 name="student_id"
                 required
+                inputMode="numeric"
+                pattern="[0-9]*"
+                onInput={(e) => { e.target.value = e.target.value.replace(/\D/g, ''); }}
                 placeholder="e.g. 202302603"
                 className={inputClass}
               />
@@ -463,7 +476,17 @@ const UserReserve = () => {
               <label className="block mb-1.5 font-semibold text-sm text-foreground">
                 Contact Number <span className="text-destructive">*</span>
               </label>
-              <input name="phone" type="tel" placeholder="e.g. 09171234567" required className={inputClass} />
+              <input
+                name="phone"
+                type="tel"
+                inputMode="numeric"
+                maxLength={11}
+                pattern="[0-9]{1,11}"
+                onInput={(e) => { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 11); }}
+                placeholder="e.g. 09171234567"
+                required
+                className={inputClass}
+              />
             </div>
             <div>
               <label className="block mb-1.5 font-semibold text-sm text-foreground">
@@ -474,8 +497,9 @@ const UserReserve = () => {
                 type="email"
                 required
                 placeholder="e.g. juandelacruz@cvsu.edu.ph"
-                defaultValue={user?.email || ''}
-                className={inputClass}
+                value={user?.email || ''}
+                readOnly
+                className={`${inputClass} bg-muted/50 cursor-not-allowed`}
               />
             </div>
             <div>
@@ -588,6 +612,8 @@ const UserReserve = () => {
                         <input
                           type="text"
                           value={member.studentNumber}
+                          inputMode="numeric"
+                          pattern="[0-9]*"
                           onChange={(e) => updateMember(idx, 'studentNumber', e.target.value)}
                           placeholder="e.g. 202302604"
                           className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-card text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/10"
@@ -723,11 +749,7 @@ const UserReserve = () => {
                         <label className="block mb-1.5 font-semibold text-xs text-muted-foreground">
                           Start Date & Time
                         </label>
-                        <input
-                          type="datetime-local"
-                          value={entry.startDatetime}
-                          onChange={(e) => updateLabField(idx, 'startDatetime', e.target.value)}
-                          min={getMinDatetimeLocal()}
+                        <BookingDateTimeInput value={entry.startDatetime} onChange={(v) => updateLabField(idx, 'startDatetime', v)} min={getMinDatetimeLocal()}
                           required
                           className={inputClass}
                         />
@@ -736,11 +758,7 @@ const UserReserve = () => {
                         <label className="block mb-1.5 font-semibold text-xs text-muted-foreground">
                           End Date & Time
                         </label>
-                        <input
-                          type="datetime-local"
-                          value={entry.endDatetime}
-                          onChange={(e) => updateLabField(idx, 'endDatetime', e.target.value)}
-                          min={entry.startDatetime || getMinDatetimeLocal()}
+                        <BookingDateTimeInput value={entry.endDatetime} onChange={(v) => updateLabField(idx, 'endDatetime', v)} min={entry.startDatetime || getMinDatetimeLocal()}
                           required
                           className={inputClass}
                         />

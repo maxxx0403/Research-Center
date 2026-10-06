@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, Fragment } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Search, Users, Check, X, MessageSquare, FlaskConical, Package, ChevronDown, ChevronUp } from 'lucide-react';
+import { Search, Users, Check, X, MessageSquare, FlaskConical, Package, ChevronDown, ChevronUp, FileSpreadsheet } from 'lucide-react';
 import StatusBadge from '@/components/StatusBadge';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -9,6 +9,7 @@ import { notifyReservationApproved, notifyReservationRejected } from '@/lib/noti
 import ReservationMessagesPanel from '@/components/ReservationMessagesPanel';
 import { logReservationAction } from '@/lib/activityLog';
 import RowActions from '@/components/RowActions';
+import { downloadReservationsExcel } from '@/lib/exportReservations';
 
 const STATUS_PRIORITY = ['rejected', 'pending', 'reserved', 'in_use', 'completed', 'cancelled'];
 
@@ -42,6 +43,8 @@ const StaffReservations = () => {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('lab');
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [expandedMembers, setExpandedMembers] = useState({});
   const [rejectingId, setRejectingId] = useState(null);
   const [rejectionReason, setRejectionReason] = useState('');
   const [rejectingEqId, setRejectingEqId] = useState(null);
@@ -50,6 +53,41 @@ const StaffReservations = () => {
   const [highlightId, setHighlightId] = useState(null);
   const [expandedLabGroups, setExpandedLabGroups] = useState({});
   const [expandedEqGroups, setExpandedEqGroups] = useState({});
+
+  const [exportingExcel, setExportingExcel] = useState(false);
+
+  // Exports every lab + equipment reservation in this staff member's assigned rooms to one Excel file.
+  const handleExportExcel = async () => {
+    setExportingExcel(true);
+    try {
+      const [{ data: labData, error: labErr }, { data: eqData, error: eqErr }] = await Promise.all([
+        supabase
+          .from('reservations')
+          .select('id, laboratory_id, researcher_name, email, phone, unit_college, adviser_name, study_title, stakeholder_type, status, approved_at, rejection_reason, start_datetime, end_datetime, members_list, batch_id, created_at, laboratories(id, lab_name, lab_code, floor), reservation_equipment(id, quantity_reserved, equipment(id, name, brand, model))')
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('equipment_reservations')
+          .select('id, researcher_name, email, purpose, quantity_reserved, start_datetime, end_datetime, status, rejection_reason, created_at, batch_id, members_list, equipment(name, brand, laboratory_id, laboratories(id, lab_code, floor))')
+          .order('created_at', { ascending: false }),
+      ]);
+      if (labErr || eqErr) throw labErr || eqErr;
+
+      const ids = new Set((assignedRoomIds || []).map((id) => String(id)));
+      const labScoped = ids.size
+        ? (labData || []).filter((r) => ids.has(String(r.laboratory_id ?? r.laboratories?.id)))
+        : (labData || []);
+      const eqScoped = ids.size
+        ? (eqData || []).filter((r) => r.equipment?.laboratory_id != null && ids.has(String(r.equipment.laboratory_id)))
+        : (eqData || []);
+
+      await downloadReservationsExcel(labScoped, eqScoped);
+    } catch (err) {
+      console.error('Excel export failed:', err);
+      toast.error('Could not export reservations. Please try again.');
+    } finally {
+      setExportingExcel(false);
+    }
+  };
 
   const loadData = async () => {
     setLoading(true);
@@ -125,6 +163,7 @@ const StaffReservations = () => {
 
   const labGroups = useMemo(() => groupByBatch(labItems), [labItems]);
   const filteredLabGroups = labGroups.filter((g) => {
+    if (statusFilter && !g.items.some((it) => it.status === statusFilter)) return false;
     const term = search.toLowerCase().trim();
     if (!term) return true;
     const r = g.primary;
@@ -141,6 +180,7 @@ const StaffReservations = () => {
   });
   const eqGroups = useMemo(() => groupByBatch(eqItems), [eqItems]);
   const filteredEqGroups = eqGroups.filter((g) => {
+    if (statusFilter && !g.items.some((it) => it.status === statusFilter)) return false;
     const term = search.toLowerCase().trim();
     if (!term) return true;
     const r = g.primary;
@@ -155,6 +195,7 @@ const StaffReservations = () => {
 
   const fmt = (d) => new Date(d).toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
+  const toggleMembers = (id) => setExpandedMembers((prev) => ({ ...prev, [id]: !prev[id] }));
   const toggleLabGroup = (key) => setExpandedLabGroups((prev) => ({ ...prev, [key]: !prev[key] }));
   const toggleEqGroup = (key) => setExpandedEqGroups((prev) => ({ ...prev, [key]: !prev[key] }));
 
@@ -232,87 +273,132 @@ const StaffReservations = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h2 className="font-heading text-lg font-bold">Reservations</h2>
-          <p className="text-xs text-muted-foreground">{assignedRoomIds.length ? `${assignedRoomIds.length} assigned room${assignedRoomIds.length > 1 ? 's' : ''}` : 'all rooms'} — you can approve/reject reservations for your assigned rooms</p>
-        </div>
-        <div className="flex gap-2 w-full sm:w-auto items-center">
-          <div className="relative w-full sm:w-64">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search researcher..." className="w-full pl-9 pr-3 py-2 border border-border rounded-lg text-sm bg-card text-foreground focus:outline-none focus:border-primary" />
+      <div className="bg-card rounded-xl shadow-card p-4">
+        <div className="flex flex-wrap gap-3 items-end">
+          <div className="flex-1 min-w-[180px]">
+            <label className="block text-xs font-semibold text-muted-foreground mb-1">Search</label>
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Name / email…" className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-card text-foreground focus:outline-none focus:border-primary" />
+          </div>
+          <div className="min-w-[140px]">
+            <label className="block text-xs font-semibold text-muted-foreground mb-1">Status</label>
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-card text-foreground">
+              <option value="">All</option>
+              {['pending', 'reserved', 'in_use', 'completed', 'cancelled', 'rejected'].map((st) => (
+                <option key={st} value={st}>{st.replace('_', ' ')}</option>
+              ))}
+            </select>
           </div>
           <button
             type="button"
             onClick={async () => {
               setSearch('');
+              setStatusFilter('');
               if (refreshRole) await refreshRole();
               loadData();
             }}
-            className="bg-muted text-muted-foreground border border-border px-3 py-2 rounded-lg text-sm font-semibold cursor-pointer hover:bg-border transition-colors whitespace-nowrap"
+            className="bg-muted text-muted-foreground border border-border px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer hover:bg-border transition-colors"
           >
             Reset
           </button>
         </div>
       </div>
 
-      <div className="flex gap-1 border-b border-border">
-        {[
-          { key: 'lab', label: 'Laboratories', icon: FlaskConical, count: filteredLabGroups.length },
-          { key: 'equipment', label: 'Equipment', icon: Package, count: filteredEqGroups.length },
-        ].map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            onClick={() => setTab(t.key)}
-            className={`inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold bg-transparent border-t-0 border-x-0 border-b-2 -mb-px cursor-pointer transition-colors ${tab === t.key ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
-          >
-            <t.icon className="w-4 h-4" /> {t.label}
-            <span className={`px-1.5 py-0.5 rounded-full text-xs font-semibold ${tab === t.key ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
-              {t.count}
-            </span>
-          </button>
-        ))}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-border">
+        <div className="flex gap-1">
+          {[
+            { key: 'lab', label: 'Laboratories', icon: FlaskConical, count: filteredLabGroups.length },
+            { key: 'equipment', label: 'Equipment', icon: Package, count: filteredEqGroups.length },
+          ].map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setTab(t.key)}
+              className={`inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold bg-transparent border-t-0 border-x-0 border-b-2 -mb-px cursor-pointer transition-colors ${tab === t.key ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+            >
+              <t.icon className="w-4 h-4" /> {t.label}
+              <span className={`px-1.5 py-0.5 rounded-full text-xs font-semibold ${tab === t.key ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
+                {t.count}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        <button
+          type="button"
+          onClick={handleExportExcel}
+          disabled={exportingExcel || loading}
+          className="inline-flex items-center gap-2 px-4 py-2 mb-2 sm:mb-2 rounded-lg text-sm font-semibold bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity self-start sm:self-auto"
+        >
+          <FileSpreadsheet className="w-4 h-4" />
+          {exportingExcel ? 'Exporting…' : 'Export All to Excel'}
+        </button>
       </div>
 
       {tab === 'lab' && (
-        <div className="bg-card rounded-xl shadow-card overflow-hidden overflow-x-auto">
+        <div className="bg-card rounded-xl shadow-card overflow-hidden">
+          <div className="px-6 py-4 border-b border-border">
+            <h3 className="font-heading text-sm font-bold">
+              Reservations <span className="bg-muted text-muted-foreground px-2 py-0.5 rounded-full text-xs ml-2">{filteredLabGroups.length}</span>
+            </h3>
+          </div>
+          <div className="overflow-x-auto">
           <table className="w-full text-sm border-collapse">
             <thead>
-              <tr className="bg-muted/50 border-b border-border">
-                <th className="px-4 py-2.5 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Researcher</th>
-                <th className="px-4 py-2.5 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Members</th>
-                <th className="px-4 py-2.5 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Laboratory</th>
-                <th className="px-4 py-2.5 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Schedule</th>
-                <th className="px-4 py-2.5 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Status</th>
-                <th className="px-4 py-2.5 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Actions</th>
+              <tr className="bg-muted/50 border-b-2 border-border">
+                <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">ID</th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Researcher</th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Members</th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Laboratory</th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Schedule</th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Status</th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={6} className="text-center py-10 text-muted-foreground text-xs">Loading...</td></tr>
+                <tr><td colSpan={7} className="text-center py-10 text-muted-foreground text-xs">Loading...</td></tr>
               ) : filteredLabGroups.length === 0 ? (
-                <tr><td colSpan={6} className="text-center py-10 text-muted-foreground text-xs">No reservations found.</td></tr>
+                <tr><td colSpan={7} className="text-center py-10 text-muted-foreground text-xs">No reservations found.</td></tr>
               ) : filteredLabGroups.map((group) => {
                 const r = group.primary;
                 const isBatch = group.items.length > 1;
                 const isGroupExpanded = expandedLabGroups[group.key];
                 return (
                 <Fragment key={group.key}>
-                <tr id={`row-lab-${r.id}`} className={`border-b border-muted last:border-0 transition-colors ${highlightId === `lab-${r.id}` ? 'bg-primary/10 ring-2 ring-primary/40' : ''}`}>
+                <tr id={`row-lab-${r.id}`} className={`border-b border-muted hover:bg-muted/30 transition-colors ${highlightId === `lab-${r.id}` ? 'bg-primary/10 ring-2 ring-primary/40' : ''}`}>
+                  <td className="px-4 py-3 font-semibold text-xs">
+                    #RC{String(r.id).padStart(5, '0')}
+                    {isBatch && <span className="text-muted-foreground font-normal"> (+{group.items.length - 1})</span>}
+                  </td>
                   <td className="px-4 py-3">
-                    <div className="font-semibold">
-                      {r.researcher_name}
-                      {isBatch && <span className="text-muted-foreground font-normal text-xs"> · #RC{String(r.id).padStart(5, '0')} (+{group.items.length - 1})</span>}
-                    </div>
+                    <div className="font-semibold">{r.researcher_name}</div>
                     <div className="text-xs text-muted-foreground">{r.email}</div>
                   </td>
                   <td className="px-4 py-3">
-                    {r.members_list?.length > 0 ?
-                  <span className="inline-flex items-center gap-1 text-xs text-muted-foreground"><Users className="w-3.5 h-3.5" /> {r.members_list.length} member{r.members_list.length > 1 ? 's' : ''}</span> :
-
-                  <span className="text-xs text-muted-foreground">—</span>
-                  }
+                    {r.members_list?.length > 0 ? (
+                      <div className="space-y-1">
+                        <button
+                          onClick={() => toggleMembers(r.id)}
+                          className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary bg-primary/10 border border-primary/20 px-2.5 py-1 rounded-full hover:bg-primary/20 transition-colors cursor-pointer"
+                        >
+                          <Users className="w-3 h-3" />
+                          {r.members_list.length} member{r.members_list.length > 1 ? 's' : ''}
+                          {expandedMembers[r.id] ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                        </button>
+                        {expandedMembers[r.id] && (
+                          <ol className="mt-1.5 space-y-0.5 pl-1">
+                            {r.members_list.map((name, i) => (
+                              <li key={i} className="text-xs text-foreground flex items-center gap-1.5">
+                                <span className="text-[10px] font-bold text-muted-foreground w-4">{i + 1}.</span>
+                                {name}
+                              </li>
+                            ))}
+                          </ol>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-xs text-muted-foreground italic">—</span>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     {isBatch ? (
@@ -331,8 +417,15 @@ const StaffReservations = () => {
                       </>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-xs">
-                    {isBatch ? <span className="text-muted-foreground italic">Multiple schedules</span> : <>{fmt(r.start_datetime)} – {fmt(r.end_datetime)}</>}
+                  <td className="px-4 py-3 text-xs whitespace-nowrap">
+                    {isBatch ? (
+                      <span className="text-muted-foreground italic">Multiple schedules</span>
+                    ) : (
+                      <>
+                        {new Date(r.start_datetime).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}<br />
+                        {new Date(r.start_datetime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} – {new Date(r.end_datetime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                      </>
+                    )}
                   </td>
                   <td className="px-4 py-3"><StatusBadge status={group.status} /></td>
                   <td className="px-4 py-3">
@@ -351,7 +444,7 @@ const StaffReservations = () => {
                 </tr>
                 {isBatch && isGroupExpanded && (
                   <tr className="bg-primary/5 border-b border-muted">
-                    <td colSpan={6} className="px-6 py-3">
+                    <td colSpan={7} className="px-6 py-3">
                       <p className="text-xs font-bold text-primary uppercase tracking-wider mb-2 flex items-center gap-1.5">
                         <FlaskConical className="w-3.5 h-3.5" /> Laboratories in this Reservation
                       </p>
@@ -375,43 +468,74 @@ const StaffReservations = () => {
               })}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 
       {tab === 'equipment' && (
-        <div className="bg-card rounded-xl shadow-card overflow-hidden overflow-x-auto">
+        <div className="bg-card rounded-xl shadow-card overflow-hidden">
+          <div className="px-6 py-4 border-b border-border">
+            <h3 className="font-heading text-sm font-bold">
+              Reservations <span className="bg-muted text-muted-foreground px-2 py-0.5 rounded-full text-xs ml-2">{filteredEqGroups.length}</span>
+            </h3>
+          </div>
+          <div className="overflow-x-auto">
           <table className="w-full text-sm border-collapse">
             <thead>
-              <tr className="bg-muted/50 border-b border-border">
-                <th className="px-4 py-2.5 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Researcher</th>
-                <th className="px-4 py-2.5 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Equipment</th>
-                <th className="px-4 py-2.5 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Schedule</th>
-                <th className="px-4 py-2.5 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Status</th>
-                <th className="px-4 py-2.5 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Actions</th>
+              <tr className="bg-muted/50 border-b-2 border-border">
+                <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">ID</th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Researcher</th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Members</th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Equipment</th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Schedule</th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Status</th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={5} className="text-center py-10 text-muted-foreground text-xs">Loading...</td></tr>
+                <tr><td colSpan={7} className="text-center py-10 text-muted-foreground text-xs">Loading...</td></tr>
               ) : filteredEqGroups.length === 0 ? (
-                <tr><td colSpan={5} className="text-center py-10 text-muted-foreground text-xs">No equipment reservations found.</td></tr>
+                <tr><td colSpan={7} className="text-center py-10 text-muted-foreground text-xs">No equipment reservations found.</td></tr>
               ) : filteredEqGroups.map((group) => {
                 const r = group.primary;
                 const isBatch = group.items.length > 1;
                 const isGroupExpanded = expandedEqGroups[group.key];
                 return (
                 <Fragment key={group.key}>
-                <tr id={`row-equipment-${r.id}`} className={`border-b border-muted last:border-0 transition-colors ${highlightId === `equipment-${r.id}` ? 'bg-primary/10 ring-2 ring-primary/40' : ''}`}>
+                <tr id={`row-equipment-${r.id}`} className={`border-b border-muted hover:bg-muted/30 transition-colors ${highlightId === `equipment-${r.id}` ? 'bg-primary/10 ring-2 ring-primary/40' : ''}`}>
+                  <td className="px-4 py-3 font-semibold text-xs">
+                    #EQ{String(r.id).padStart(5, '0')}
+                    {isBatch && <span className="text-muted-foreground font-normal"> (+{group.items.length - 1})</span>}
+                  </td>
                   <td className="px-4 py-3">
-                    <div className="font-semibold">
-                      {r.researcher_name}
-                      {isBatch && <span className="text-muted-foreground font-normal text-xs"> · #EQ{String(r.id).padStart(5, '0')} (+{group.items.length - 1})</span>}
-                    </div>
+                    <div className="font-semibold">{r.researcher_name}</div>
                     <div className="text-xs text-muted-foreground">{r.email}</div>
-                    {r.members_list?.length > 0 && (
-                      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
-                        <Users className="w-3.5 h-3.5" /> {r.members_list.length} member{r.members_list.length > 1 ? 's' : ''}
-                      </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    {r.members_list?.length > 0 ? (
+                      <div className="space-y-1">
+                        <button
+                          onClick={() => toggleMembers(`eq-${r.id}`)}
+                          className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary bg-primary/10 border border-primary/20 px-2.5 py-1 rounded-full hover:bg-primary/20 transition-colors cursor-pointer"
+                        >
+                          <Users className="w-3 h-3" />
+                          {r.members_list.length} member{r.members_list.length > 1 ? 's' : ''}
+                          {expandedMembers[`eq-${r.id}`] ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                        </button>
+                        {expandedMembers[`eq-${r.id}`] && (
+                          <ol className="mt-1.5 space-y-0.5 pl-1">
+                            {r.members_list.map((name, i) => (
+                              <li key={i} className="text-xs text-foreground flex items-center gap-1.5">
+                                <span className="text-[10px] font-bold text-muted-foreground w-4">{i + 1}.</span>
+                                {name}
+                              </li>
+                            ))}
+                          </ol>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-xs text-muted-foreground italic">—</span>
                     )}
                   </td>
                   <td className="px-4 py-3">
@@ -431,8 +555,15 @@ const StaffReservations = () => {
                       </>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-xs">
-                    {isBatch ? <span className="text-muted-foreground italic">Multiple schedules</span> : <>{fmt(r.start_datetime)} – {fmt(r.end_datetime)}</>}
+                  <td className="px-4 py-3 text-xs whitespace-nowrap">
+                    {isBatch ? (
+                      <span className="text-muted-foreground italic">Multiple schedules</span>
+                    ) : (
+                      <>
+                        {new Date(r.start_datetime).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}<br />
+                        {new Date(r.start_datetime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} – {new Date(r.end_datetime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                      </>
+                    )}
                   </td>
                   <td className="px-4 py-3"><StatusBadge status={group.status} /></td>
                   <td className="px-4 py-3">
@@ -451,7 +582,7 @@ const StaffReservations = () => {
                 </tr>
                 {isBatch && isGroupExpanded && (
                   <tr className="bg-primary/5 border-b border-muted">
-                    <td colSpan={5} className="px-6 py-3">
+                    <td colSpan={7} className="px-6 py-3">
                       <p className="text-xs font-bold text-primary uppercase tracking-wider mb-2 flex items-center gap-1.5">
                         <Package className="w-3.5 h-3.5" /> Equipment in this Request
                       </p>
@@ -473,6 +604,7 @@ const StaffReservations = () => {
               })}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 

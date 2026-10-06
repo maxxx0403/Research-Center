@@ -92,13 +92,23 @@ const Index = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background overflow-x-hidden">
+    <div className="relative isolate min-h-screen bg-background overflow-x-hidden">
+      {/* Soft color blobs behind the page so the glass navbar has something to blur */}
+      <div aria-hidden className="fixed inset-0 -z-10 pointer-events-none overflow-hidden">
+        <div className="absolute -top-28 -left-16 w-[520px] h-[520px] rounded-full bg-primary/35 blur-3xl" />
+        <div className="absolute -top-10 right-[2%] w-[460px] h-[460px] rounded-full bg-emerald-400/40 blur-3xl" />
+        <div className="absolute top-[32%] -left-24 w-[460px] h-[460px] rounded-full bg-lime-400/30 blur-3xl" />
+        <div className="absolute top-[28%] left-[36%] w-[380px] h-[380px] rounded-full bg-accent/20 blur-3xl" />
+        <div className="absolute top-[42%] -right-24 w-[480px] h-[480px] rounded-full bg-emerald-500/30 blur-3xl" />
+        <div className="absolute -bottom-28 left-[14%] w-[500px] h-[500px] rounded-full bg-primary/30 blur-3xl" />
+        <div className="absolute -bottom-16 right-[6%] w-[420px] h-[420px] rounded-full bg-emerald-400/35 blur-3xl" />
+      </div>
       <Navbar />
 
       {/* Hero + Features (contained card, matches design mockup) */}
       <section className="pt-28 pb-10 px-[4%]">
         <div className="max-w-[1300px] mx-auto rounded-[2rem] relative overflow-hidden gradient-hero border border-primary/10">
-          <div className="absolute inset-[-50%] bg-[radial-gradient(circle_at_25%_25%,hsl(224_72%_40%/0.1),transparent_50%),radial-gradient(circle_at_75%_75%,hsl(187_92%_42%/0.1),transparent_50%)] animate-float z-[1] pointer-events-none" />
+          <div className="absolute inset-[-50%] bg-[radial-gradient(circle_at_25%_25%,hsl(145_63%_30%/0.10),transparent_50%),radial-gradient(circle_at_75%_75%,hsl(140_55%_45%/0.10),transparent_50%)] animate-float z-[1] pointer-events-none" />
 
           {/* Hero content */}
           <div className="text-center relative z-[2] pt-16 pb-14 px-8 animate-fade-up">
@@ -143,7 +153,7 @@ const Index = () => {
       </section>
 
       {/* Laboratories */}
-      <section id="laboratories" className="py-24 px-[5%] bg-card">
+      <section id="laboratories" className="py-24 px-[5%]">
         <div className="text-center mb-10">
           <h2 className="font-heading text-[clamp(1.9rem,4vw,2.8rem)] text-primary mb-3 font-bold">Our Laboratories</h2>
           <p className="text-lg text-muted-foreground max-w-[580px] mx-auto">World-class research facilities equipped with state-of-the-art instruments</p>
@@ -158,13 +168,13 @@ const Index = () => {
               value={labSearch}
               onChange={(e) => setLabSearch(e.target.value)}
               placeholder="Search laboratories by name, code, or floor…"
-              className="w-full pl-10 pr-4 py-3 border-2 border-border rounded-lg text-sm bg-background text-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 transition-colors"
+              className="w-full pl-10 pr-4 py-3 border-2 border-white/70 rounded-lg text-sm bg-white/50 backdrop-blur-xl text-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 transition-colors"
             />
           </div>
           <select
             value={labStatusFilter}
             onChange={(e) => setLabStatusFilter(e.target.value)}
-            className="px-4 py-3 border-2 border-border rounded-lg text-sm bg-background text-foreground focus:outline-none focus:border-primary sm:w-56"
+            className="px-4 py-3 border-2 border-white/70 rounded-lg text-sm bg-white/50 backdrop-blur-xl text-foreground focus:outline-none focus:border-primary sm:w-56"
           >
             <option value="all">All statuses</option>
             <option value="available">Available</option>
@@ -178,16 +188,20 @@ const Index = () => {
 
         <div className="grid grid-cols-[repeat(auto-fill,minmax(340px,1fr))] gap-6 max-w-[1200px] mx-auto">
           {filteredLabs.map((lab) =>
-          <div key={lab.id} className={`bg-card rounded-2xl p-6 shadow-card border border-border hover:-translate-y-2 hover:shadow-card-hover transition-all relative overflow-hidden group ${lab.status !== 'available' ? 'opacity-90' : ''}`}>
+          <div key={lab.id} className={`isolate rounded-2xl p-6 bg-white/30 dark:bg-white/10 backdrop-blur-2xl backdrop-saturate-[1.8] border border-white/70
+                shadow-[0_8px_32px_rgba(20,60,40,0.12),inset_0_1px_1px_rgba(255,255,255,0.9),inset_0_0_24px_rgba(255,255,255,0.3)]
+                hover:-translate-y-2 hover:shadow-[0_16px_40px_rgba(20,60,40,0.20),inset_0_1px_1px_rgba(255,255,255,0.9),inset_0_0_24px_rgba(255,255,255,0.3)]
+                transition-all relative overflow-hidden group ${lab.status !== 'available' ? 'opacity-90' : ''}`}>
+              <span aria-hidden className="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-b from-white/50 via-white/5 to-transparent" />
               <div className={`absolute top-0 left-0 right-0 h-1 ${lab.status === 'available' ? 'gradient-primary' : lab.status === 'maintenance' ? 'bg-destructive' : 'bg-warning'}`} />
               <div className="w-14 h-14 gradient-primary rounded-xl flex items-center justify-center mb-5 text-primary-foreground">
                 <FlaskConical className="w-5 h-5" />
               </div>
               <h3 className="font-heading text-sm text-primary mb-1 font-bold leading-snug">{lab.lab_name}</h3>
-              <code className="text-[0.7rem] bg-muted px-1.5 py-0.5 rounded text-primary">{lab.lab_code}</code>
+              <code className="text-[0.7rem] bg-white/60 px-1.5 py-0.5 rounded text-primary">{lab.lab_code}</code>
               <p className="text-muted-foreground text-sm leading-relaxed mb-4 mt-3">{lab.description}</p>
               <div className="flex justify-between items-center mb-4 flex-wrap gap-1">
-                <span className="bg-muted px-3 py-1 rounded-full text-xs text-muted-foreground font-medium">
+                <span className="bg-white/60 px-3 py-1 rounded-full text-xs text-muted-foreground font-medium">
                   Capacity: {lab.max_capacity ?? 'N/A'}
                 </span>
                 <StatusBadge status={lab.status} />
@@ -243,7 +257,7 @@ const Index = () => {
       </section>
 
       {/* About */}
-      <section id="about" className="py-24 px-[5%] bg-card">
+      <section id="about" className="py-24 px-[5%]">
         <div className="max-w-[1200px] mx-auto grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
           <div>
             <h2 className="font-heading text-[2.3rem] text-primary mb-6 font-bold">About the Research Center</h2>
@@ -265,7 +279,11 @@ const Index = () => {
             { num: '3', label: 'Buildings', icon: <Users className="w-6 h-6" /> },
             { num: '4.5★', label: 'Avg Rating', icon: <Award className="w-6 h-6" /> }].
             map((stat) =>
-            <div key={stat.label} className="text-center p-8 bg-muted/50 rounded-2xl shadow-card">
+            <div key={stat.label} className="isolate text-center p-8 bg-white/30 dark:bg-white/10 backdrop-blur-2xl backdrop-saturate-[1.8] border border-white/70 rounded-2xl
+                shadow-[0_8px_32px_rgba(20,60,40,0.12),inset_0_1px_1px_rgba(255,255,255,0.9),inset_0_0_24px_rgba(255,255,255,0.3)]
+                hover:-translate-y-1 hover:shadow-[0_16px_40px_rgba(20,60,40,0.20),inset_0_1px_1px_rgba(255,255,255,0.9),inset_0_0_24px_rgba(255,255,255,0.3)]
+                transition-all relative overflow-hidden">
+                <span aria-hidden className="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-b from-white/50 via-white/5 to-transparent" />
                 <div className="text-accent mb-2">{stat.icon}</div>
                 <span className="font-heading text-3xl font-bold text-primary block">{stat.num}</span>
                 <span className="text-muted-foreground font-medium text-sm mt-1">{stat.label}</span>
@@ -276,14 +294,16 @@ const Index = () => {
       </section>
 
       {/* Feedback */}
-      <section id="feedback" className="py-24 px-[5%] bg-muted/50">
+      <section id="feedback" className="py-24 px-[5%]">
         <div className="text-center mb-14">
           <h2 className="font-heading text-[clamp(1.9rem,4vw,2.8rem)] text-primary mb-3 font-bold">We'd Love Your Feedback</h2>
           <p className="text-lg text-muted-foreground max-w-[580px] mx-auto">Help us improve the Research Center Laboratory Reservation System</p>
         </div>
 
         {feedbackSubmitted ? (
-          <div className="max-w-[600px] mx-auto bg-card rounded-2xl shadow-lg p-12 text-center animate-fade-up">
+          <div className="isolate max-w-[600px] mx-auto text-center animate-fade-up p-12 bg-white/30 dark:bg-white/10 backdrop-blur-2xl backdrop-saturate-[1.8] border border-white/70 rounded-2xl
+              shadow-[0_8px_32px_rgba(20,60,40,0.12),inset_0_1px_1px_rgba(255,255,255,0.9),inset_0_0_24px_rgba(255,255,255,0.3)] relative overflow-hidden">
+            <span aria-hidden className="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-b from-white/50 via-white/5 to-transparent" />
             <CheckCircle2 className="w-16 h-16 text-success mx-auto mb-4" />
             <h3 className="font-heading text-3xl text-primary mb-3">Thank You!</h3>
             <p className="text-muted-foreground mb-6">Your feedback has been submitted successfully. We appreciate your valuable input to improve our services.</p>
@@ -296,7 +316,9 @@ const Index = () => {
             </button>
           </div>
         ) : (
-          <form onSubmit={handleFeedbackSubmit} className="max-w-[700px] mx-auto bg-card rounded-2xl shadow-lg p-8 space-y-8">
+          <form onSubmit={handleFeedbackSubmit} className="isolate max-w-[700px] mx-auto space-y-8 p-8 bg-white/30 dark:bg-white/10 backdrop-blur-2xl backdrop-saturate-[1.8] border border-white/70 rounded-2xl
+              shadow-[0_8px_32px_rgba(20,60,40,0.12),inset_0_1px_1px_rgba(255,255,255,0.9),inset_0_0_24px_rgba(255,255,255,0.3)] relative overflow-hidden">
+            <span aria-hidden className="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-b from-white/50 via-white/5 to-transparent" />
             {feedbackError && (
               <div className="bg-destructive/10 border border-destructive/25 text-destructive rounded-xl p-3 text-sm font-medium">
                 {feedbackError}
@@ -318,7 +340,7 @@ const Index = () => {
                     onMouseLeave={() => setHoverRating(0)}
                     className="bg-transparent border-none cursor-pointer transition-transform hover:scale-110"
                   >
-                    <Star className={`w-8 h-8 ${(hoverRating || rating) >= star ? 'fill-warning text-warning' : 'text-border'}`} />
+                    <Star className={`w-8 h-8 transition-colors ${(hoverRating || rating) >= star ? 'fill-warning text-warning' : 'fill-warning/10 text-warning/50'}`} />
                   </button>
                 ))}
               </div>
@@ -339,7 +361,7 @@ const Index = () => {
                   type="text"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
-                  className="w-full px-4 py-3 border-2 border-border rounded-xl text-base bg-card text-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10"
+                  className="w-full px-4 py-3 border-2 border-white/70 rounded-xl text-base bg-white/50 backdrop-blur-xl text-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10"
                 />
               </div>
               <div>
@@ -348,7 +370,7 @@ const Index = () => {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full px-4 py-3 border-2 border-border rounded-xl text-base bg-card text-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10"
+                  className="w-full px-4 py-3 border-2 border-white/70 rounded-xl text-base bg-white/50 backdrop-blur-xl text-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10"
                 />
               </div>
             </div>
@@ -359,7 +381,7 @@ const Index = () => {
               <select
                 value={selectedLabId}
                 onChange={(e) => setSelectedLabId(e.target.value)}
-                className="w-full px-4 py-3 border-2 border-border rounded-xl text-base bg-card text-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10"
+                className="w-full px-4 py-3 border-2 border-white/70 rounded-xl text-base bg-white/50 backdrop-blur-xl text-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10"
               >
                 <option value="">Select a laboratory…</option>
                 {labs.map((lab) => (
@@ -379,7 +401,7 @@ const Index = () => {
                 placeholder="Tell us what you think… What did we do well? What could we improve?"
                 rows={4}
                 maxLength={1000}
-                className="w-full px-4 py-3 border-2 border-border rounded-xl text-base bg-card text-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 resize-y"
+                className="w-full px-4 py-3 border-2 border-white/70 rounded-xl text-base bg-white/50 backdrop-blur-xl text-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 resize-y"
               />
               <p className="text-xs text-muted-foreground mt-1">{comment.length} / 1000 characters</p>
             </div>
@@ -396,7 +418,7 @@ const Index = () => {
               <button
                 type="button"
                 onClick={resetFeedbackForm}
-                className="px-6 py-3 rounded-xl font-semibold border-2 border-border bg-card text-foreground cursor-pointer hover:border-primary hover:text-primary transition-colors"
+                className="px-6 py-3 rounded-xl font-semibold border-2 border-white/70 bg-white/50 backdrop-blur-xl text-foreground cursor-pointer hover:border-primary hover:text-primary transition-colors"
               >
                 Clear
               </button>

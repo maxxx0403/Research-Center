@@ -97,30 +97,33 @@ const StaffEquipment = () => {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h2 className="font-heading text-lg font-bold">Equipment</h2>
-          <p className="text-xs text-muted-foreground">{assignedRoomIds.length ? `${assignedRoomIds.length} assigned room${assignedRoomIds.length > 1 ? 's' : ''}` : 'all rooms'} — you can add/edit equipment in your assigned rooms</p>
-        </div>
-        <div className="flex gap-2 w-full sm:w-auto">
-          <div className="relative flex-1 sm:w-64">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search equipment..." className="w-full pl-9 pr-3 py-2 border border-border rounded-lg text-sm bg-card text-foreground focus:outline-none focus:border-primary" />
+      <div className="bg-card rounded-xl shadow-card p-4">
+        <div className="flex flex-wrap gap-3 items-end">
+          <div className="flex-1 min-w-[180px]">
+            <label className="block text-xs font-semibold text-muted-foreground mb-1">Search</label>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Equipment name or brand…" className="w-full pl-10 pr-4 py-2 border border-border rounded-lg text-sm bg-card text-foreground focus:outline-none focus:border-primary" />
+            </div>
           </div>
           <button onClick={openAdd} className="gradient-primary text-primary-foreground px-4 py-2 rounded-xl font-semibold text-sm border-none cursor-pointer hover:-translate-y-0.5 hover:shadow-lg transition-all inline-flex items-center gap-2 whitespace-nowrap">
-            <Plus className="w-4 h-4" /> Add
+            <Plus className="w-4 h-4" /> Add Equipment
           </button>
         </div>
       </div>
 
       <div className="bg-card rounded-xl shadow-card overflow-hidden">
+        <div className="px-6 py-4 border-b border-border">
+          <h2 className="font-heading text-sm font-bold">Equipment Inventory <span className="bg-muted text-muted-foreground px-2 py-0.5 rounded-full text-xs ml-2">{filtered.length}</span></h2>
+        </div>
+        <div className="overflow-x-auto">
         <table className="w-full text-sm border-collapse">
           <thead>
-            <tr className="bg-muted/50 border-b border-border">
-              <th className="px-4 py-2.5 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Name</th>
-              <th className="px-4 py-2.5 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Laboratory</th>
-              <th className="px-4 py-2.5 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Qty Available</th>
-              <th className="px-4 py-2.5 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Actions</th>
+            <tr className="bg-muted/50 border-b-2 border-border">
+              <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Name</th>
+              <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Laboratory</th>
+              <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Qty Available</th>
+              <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -129,7 +132,7 @@ const StaffEquipment = () => {
             ) : filtered.length === 0 ? (
               <tr><td colSpan={4} className="text-center py-10 text-muted-foreground text-xs">No equipment found for your assigned rooms.</td></tr>
             ) : filtered.map((e) =>
-            <tr key={e.id} className="border-b border-muted last:border-0">
+            <tr key={e.id} className="border-b border-muted hover:bg-muted/30">
                 <td className="px-4 py-3">
                   <div className="font-semibold">{e.name}</div>
                   {e.brand && <div className="text-xs text-muted-foreground">{e.brand}{e.model ? ` · ${e.model}` : ''}</div>}
@@ -163,6 +166,7 @@ const StaffEquipment = () => {
             )}
           </tbody>
         </table>
+        </div>
       </div>
 
       {showModal &&

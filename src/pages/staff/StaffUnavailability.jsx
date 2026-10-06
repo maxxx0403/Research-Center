@@ -102,11 +102,6 @@ const StaffUnavailability = () => {
 
   return (
     <div className="max-w-md space-y-5">
-      <div>
-        <h2 className="font-heading text-lg font-bold">My Unavailable Dates</h2>
-        <p className="text-xs text-muted-foreground">Dates you won't be available get shown on the shared calendar and reported to admin.</p>
-      </div>
-
       <div className="bg-card rounded-xl shadow-card overflow-hidden">
         <div className="px-6 py-4 border-b border-border flex items-center gap-2">
           <CalendarOff className="w-4 h-4 text-primary" />

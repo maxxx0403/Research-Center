@@ -102,7 +102,7 @@ const LaboratoryReport = ({ roomIds = [] }) => {
 
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-4">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-4">
         {cards.map((s) => (
           <div key={s.label} className="bg-card rounded-xl p-5 shadow-card text-center">
             <div className={`font-heading text-3xl font-bold ${s.color}`}>{loading ? '…' : s.value}</div>
@@ -200,4 +200,4 @@ const LaboratoryReport = ({ roomIds = [] }) => {
   );
 };
 
-export default LaboratoryReport;
+export default LaboratoryReport;  

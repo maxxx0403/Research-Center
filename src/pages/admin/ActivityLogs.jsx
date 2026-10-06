@@ -10,6 +10,10 @@ const ActivityLogs = () => {
     const { data } = await supabase
       .from('activity_logs')
       .select('id, action, description, floor, actor, created_at')
+      // Only actions done by an admin or staff member -- no system / automatic entries.
+      .not('actor', 'is', null)
+      .neq('actor', '')
+      .not('actor', 'ilike', 'system')
       .order('created_at', { ascending: false })
       .limit(200);
     setLogs(data || []);

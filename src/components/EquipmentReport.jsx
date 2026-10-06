@@ -103,12 +103,10 @@ const EquipmentReport = ({ roomIds = [] }) => {
   };
 
   const cards = [
-    { label: 'Equipment Items', value: totals.items, color: 'text-primary' },
     { label: 'Total Units', value: totals.units, color: 'text-primary' },
-    { label: 'Available', value: totals.available, color: 'text-success' },
-    { label: 'Under Maintenance', value: totals.maintenance, color: 'text-destructive' },
     { label: 'Total Reservations', value: totals.reservations, color: 'text-primary' },
     { label: 'Completed', value: totals.completed, color: 'text-success' },
+    { label: 'Under Maintenance', value: totals.maintenance, color: 'text-destructive' },
     { label: 'Cancelled / Rejected', value: totals.cancelled, color: 'text-destructive' },
   ];
 
@@ -116,7 +114,7 @@ const EquipmentReport = ({ roomIds = [] }) => {
 
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-4">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-4">
         {cards.map((s) => (
           <div key={s.label} className="bg-card rounded-xl p-5 shadow-card text-center">
             <div className={`font-heading text-3xl font-bold ${s.color}`}>{loading ? '…' : s.value}</div>

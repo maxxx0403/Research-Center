@@ -5,6 +5,8 @@ import { Edit2, Trash2, X, Check, ChevronDown, ChevronUp, Package, FlaskConical,
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import StatusBadge from '@/components/StatusBadge';
+import RowActions from '@/components/RowActions';
+import BookingDateTimeInput from '@/components/BookingDateTimeInput';
 import {
   cancelReservation,
   updateReservation,
@@ -451,38 +453,37 @@ const UserReservations = () => {
                         <p className="text-[0.7rem] text-destructive mt-1 max-w-[160px]">{group.rejectionReasons.join('; ')}</p>
                       )}
                     </td>
-                    <td className="px-4 py-3 flex gap-2 flex-wrap">
-                      {!isBatch && EDITABLE_STATUSES.includes(primary.status) && (
-                        <button
-                          onClick={() => startEdit(primary)}
-                          className="bg-primary/10 text-primary border border-primary/20 px-3 py-1 rounded text-xs font-semibold cursor-pointer hover:bg-primary hover:text-primary-foreground transition-colors inline-flex items-center gap-1"
-                        >
-                          <Edit2 className="w-3 h-3" /> {primary.status === 'rejected' ? 'Edit & Resubmit' : 'Edit'}
-                        </button>
-                      )}
-                      {(group.status === 'pending' || group.status === 'reserved') && (
-                        <button
-                          onClick={() => (isBatch ? handleCancelLabGroup(group) : handleCancelReservation(primary.id))}
-                          className="bg-destructive/10 text-destructive border border-destructive/20 px-3 py-1 rounded text-xs font-semibold cursor-pointer hover:bg-destructive hover:text-destructive-foreground transition-colors inline-flex items-center gap-1"
-                        >
-                          <Trash2 className="w-3 h-3" /> Cancel
-                        </button>
-                      )}
-                      {['reserved', 'in_use', 'completed'].includes(group.status) && (
-                        <button
-                          onClick={() => (isBatch ? handleDownloadLabGroupForm(group) : handleDownloadForm(primary))}
-                          disabled={downloadingId === primary.id}
-                          className="bg-success/10 text-success border border-success/20 px-3 py-1 rounded text-xs font-semibold cursor-pointer hover:bg-success hover:text-success-foreground transition-colors inline-flex items-center gap-1 disabled:opacity-50"
-                        >
-                          <FileDown className="w-3 h-3" /> {downloadingId === primary.id ? 'Preparing…' : 'Download Form'}
-                        </button>
-                      )}
-                      <button
-                        onClick={() => setMessagingItem({ type: 'lab', id: primary.id, label: `Reservation #RC${String(primary.id).padStart(5, '0')}`, reason: group.rejectionReasons[0] })}
-                        className={`px-3 py-1 rounded text-xs font-semibold cursor-pointer transition-colors inline-flex items-center gap-1 ${group.status === 'rejected' ? 'bg-destructive text-destructive-foreground hover:brightness-110' : 'bg-primary/10 text-primary border border-primary/20 hover:bg-primary hover:text-primary-foreground'}`}
-                      >
-                        <MessageSquare className="w-3 h-3" /> {group.status === 'rejected' ? 'Ask why' : 'Message'}
-                      </button>
+                    <td className="px-4 py-3">
+                      <RowActions
+                        items={[
+                          {
+                            label: primary.status === 'rejected' ? 'Edit & Resubmit' : 'Edit',
+                            icon: Edit2,
+                            onClick: () => startEdit(primary),
+                            hidden: isBatch || !EDITABLE_STATUSES.includes(primary.status),
+                          },
+                          {
+                            label: group.status === 'rejected' ? 'Ask why' : 'Message',
+                            icon: MessageSquare,
+                            onClick: () => setMessagingItem({ type: 'lab', id: primary.id, label: `Reservation #RC${String(primary.id).padStart(5, '0')}`, reason: group.rejectionReasons[0] }),
+                          },
+                          {
+                            label: downloadingId === primary.id ? 'Preparing…' : 'Download Form',
+                            icon: FileDown,
+                            onClick: () => (isBatch ? handleDownloadLabGroupForm(group) : handleDownloadForm(primary)),
+                            disabled: downloadingId === primary.id,
+                            hidden: !['reserved', 'in_use', 'completed'].includes(group.status),
+                          },
+                          { separator: true },
+                          {
+                            label: 'Cancel',
+                            icon: Trash2,
+                            destructive: true,
+                            onClick: () => (isBatch ? handleCancelLabGroup(group) : handleCancelReservation(primary.id)),
+                            hidden: !(group.status === 'pending' || group.status === 'reserved'),
+                          },
+                        ]}
+                      />
                     </td>
                   </tr>
 
@@ -578,21 +579,19 @@ const UserReservations = () => {
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
                               <label className="block text-xs font-semibold text-muted-foreground mb-1">Start Date & Time</label>
-                              <input
-                                type="datetime-local"
+                              <BookingDateTimeInput
                                 value={editData.start_datetime}
                                 min={earliestBookableInput()}
-                                onChange={(e) => setEditData({ ...editData, start_datetime: e.target.value })}
+                                onChange={(v) => setEditData({ ...editData, start_datetime: v })}
                                 className="w-full px-3 py-2 border border-border rounded text-sm"
                               />
                             </div>
                             <div>
                               <label className="block text-xs font-semibold text-muted-foreground mb-1">End Date & Time</label>
-                              <input
-                                type="datetime-local"
+                              <BookingDateTimeInput
                                 value={editData.end_datetime}
                                 min={editData.start_datetime || earliestBookableInput()}
-                                onChange={(e) => setEditData({ ...editData, end_datetime: e.target.value })}
+                                onChange={(v) => setEditData({ ...editData, end_datetime: v })}
                                 className="w-full px-3 py-2 border border-border rounded text-sm"
                               />
                             </div>
@@ -711,38 +710,37 @@ const UserReservations = () => {
                         <p className="text-[0.7rem] text-destructive mt-1 max-w-[160px]">{group.rejectionReasons.join('; ')}</p>
                       )}
                     </td>
-                    <td className="px-4 py-3 flex gap-2 flex-wrap">
-                      {EDITABLE_STATUSES.includes(group.status) && (
-                        <button
-                          onClick={() => startEditEq(group)}
-                          className="bg-primary/10 text-primary border border-primary/20 px-3 py-1 rounded text-xs font-semibold cursor-pointer hover:bg-primary hover:text-primary-foreground transition-colors inline-flex items-center gap-1"
-                        >
-                          <Edit2 className="w-3 h-3" /> {group.status === 'rejected' ? 'Edit & Resubmit' : 'Edit'}
-                        </button>
-                      )}
-                      {(group.status === 'pending' || group.status === 'reserved') && (
-                        <button
-                          onClick={() => handleCancelEqGroup(group)}
-                          className="bg-destructive/10 text-destructive border border-destructive/20 px-3 py-1 rounded text-xs font-semibold cursor-pointer hover:bg-destructive hover:text-destructive-foreground transition-colors inline-flex items-center gap-1"
-                        >
-                          <Trash2 className="w-3 h-3" /> Cancel
-                        </button>
-                      )}
-                      {['reserved', 'in_use', 'completed'].includes(group.status) && (
-                        <button
-                          onClick={() => handleDownloadEqForm(group)}
-                          disabled={downloadingEqKey === group.key}
-                          className="bg-success/10 text-success border border-success/20 px-3 py-1 rounded text-xs font-semibold cursor-pointer hover:bg-success hover:text-success-foreground transition-colors inline-flex items-center gap-1 disabled:opacity-50"
-                        >
-                          <FileDown className="w-3 h-3" /> {downloadingEqKey === group.key ? 'Preparing…' : 'Download Form'}
-                        </button>
-                      )}
-                      <button
-                        onClick={() => setMessagingItem({ type: 'equipment', id: primary.id, label: `Equipment request #EQ${String(primary.id).padStart(5, '0')}`, reason: group.rejectionReasons[0] })}
-                        className={`px-3 py-1 rounded text-xs font-semibold cursor-pointer transition-colors inline-flex items-center gap-1 ${group.status === 'rejected' ? 'bg-destructive text-destructive-foreground hover:brightness-110' : 'bg-primary/10 text-primary border border-primary/20 hover:bg-primary hover:text-primary-foreground'}`}
-                      >
-                        <MessageSquare className="w-3 h-3" /> {group.status === 'rejected' ? 'Ask why' : 'Message'}
-                      </button>
+                    <td className="px-4 py-3">
+                      <RowActions
+                        items={[
+                          {
+                            label: group.status === 'rejected' ? 'Edit & Resubmit' : 'Edit',
+                            icon: Edit2,
+                            onClick: () => startEditEq(group),
+                            hidden: !EDITABLE_STATUSES.includes(group.status),
+                          },
+                          {
+                            label: group.status === 'rejected' ? 'Ask why' : 'Message',
+                            icon: MessageSquare,
+                            onClick: () => setMessagingItem({ type: 'equipment', id: primary.id, label: `Equipment request #EQ${String(primary.id).padStart(5, '0')}`, reason: group.rejectionReasons[0] }),
+                          },
+                          {
+                            label: downloadingEqKey === group.key ? 'Preparing…' : 'Download Form',
+                            icon: FileDown,
+                            onClick: () => handleDownloadEqForm(group),
+                            disabled: downloadingEqKey === group.key,
+                            hidden: !['reserved', 'in_use', 'completed'].includes(group.status),
+                          },
+                          { separator: true },
+                          {
+                            label: 'Cancel',
+                            icon: Trash2,
+                            destructive: true,
+                            onClick: () => handleCancelEqGroup(group),
+                            hidden: !(group.status === 'pending' || group.status === 'reserved'),
+                          },
+                        ]}
+                      />
                     </td>
                   </tr>
 
@@ -788,21 +786,19 @@ const UserReservations = () => {
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
                               <label className="block text-xs font-semibold text-muted-foreground mb-1">Start Date & Time</label>
-                              <input
-                                type="datetime-local"
+                              <BookingDateTimeInput
                                 value={editEqData.start_datetime}
                                 min={earliestBookableInput()}
-                                onChange={(e) => setEditEqData({ ...editEqData, start_datetime: e.target.value })}
+                                onChange={(v) => setEditEqData({ ...editEqData, start_datetime: v })}
                                 className="w-full px-3 py-2 border border-border rounded text-sm"
                               />
                             </div>
                             <div>
                               <label className="block text-xs font-semibold text-muted-foreground mb-1">End Date & Time</label>
-                              <input
-                                type="datetime-local"
+                              <BookingDateTimeInput
                                 value={editEqData.end_datetime}
                                 min={editEqData.start_datetime || earliestBookableInput()}
-                                onChange={(e) => setEditEqData({ ...editEqData, end_datetime: e.target.value })}
+                                onChange={(v) => setEditEqData({ ...editEqData, end_datetime: v })}
                                 className="w-full px-3 py-2 border border-border rounded text-sm"
                               />
                             </div>

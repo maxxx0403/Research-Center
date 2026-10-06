@@ -22,11 +22,6 @@ const StaffCalendar = () => {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="font-heading text-lg font-bold">Reservations Calendar</h2>
-        <p className="text-xs text-muted-foreground">{assignedRoomIds.length ? `${assignedRoomIds.length} assigned room${assignedRoomIds.length > 1 ? 's' : ''}` : 'all rooms'}</p>
-      </div>
-
       <div className="bg-card rounded-xl shadow-card p-6">
         <label className="block text-sm font-semibold text-foreground mb-3">Laboratory</label>
         {loadingLabs ?

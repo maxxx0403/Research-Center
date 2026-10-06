@@ -48,11 +48,6 @@ const StaffDashboard = () => {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="font-heading text-lg font-bold">Dashboard</h2>
-        <p className="text-xs text-muted-foreground">{assignedRoomIds.length ? `${assignedRoomIds.length} assigned room${assignedRoomIds.length > 1 ? 's' : ''}` : 'all rooms'}</p>
-      </div>
-
       <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4">
         {stats.map((s) =>
         <div key={s.label} className="bg-card rounded-xl p-5 shadow-card flex items-center gap-4">

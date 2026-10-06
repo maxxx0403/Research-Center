@@ -10,11 +10,6 @@ const StaffReports = () => {
 
   return (
     <div className="space-y-5">
-      <div>
-        <h2 className="font-heading text-lg font-bold">Reports</h2>
-        <p className="text-xs text-muted-foreground">{assignedRoomIds.length ? `${assignedRoomIds.length} assigned room${assignedRoomIds.length > 1 ? 's' : ''}` : 'all rooms'}</p>
-      </div>
-
       <div className="flex gap-1 border-b border-border">
         {[
           { key: 'lab', label: 'Laboratories', icon: FlaskConical },

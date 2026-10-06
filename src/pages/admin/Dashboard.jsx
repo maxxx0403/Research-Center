@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Hourglass, FlaskConical, Package } from 'lucide-react';
+import { Hourglass, FlaskConical, Package, CalendarCheck } from 'lucide-react';
 import StatusBadge from '@/components/StatusBadge';
 import ReservationCalendarView from '@/components/ReservationCalendarView';
 import { supabase } from '@/integrations/supabase/client';
@@ -8,23 +8,27 @@ import { Link } from 'react-router-dom';
 const Dashboard = () => {
   const [labs, setLabs] = useState([]);
   const [reservations, setReservations] = useState([]);
-  const [equipCount, setEquipCount] = useState(0);
+  const [equipUnits, setEquipUnits] = useState(0);
+  const [totalReservations, setTotalReservations] = useState(0);
   const [pendingCount, setPendingCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [selectedLabId, setSelectedLabId] = useState(null);
 
   useEffect(() => {
     const fetch = async () => {
-      const [{ data: labData }, { data: resData }, { count: eqC }, { count: pendLab }, { count: pendEq }] = await Promise.all([
+      const [{ data: labData }, { data: resData }, { data: eqData }, { count: pendLab }, { count: pendEq }, { count: totalLab }, { count: totalEq }] = await Promise.all([
         supabase.from('laboratories').select('*').order('id'),
         supabase.from('reservations').select('id, researcher_name, email, status, created_at, laboratories(lab_name, lab_code)').order('created_at', { ascending: false }).limit(5),
-        supabase.from('equipment').select('*', { count: 'exact', head: true }),
+        supabase.from('equipment').select('quantity'),
         supabase.from('reservations').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
         supabase.from('equipment_reservations').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
+        supabase.from('reservations').select('*', { count: 'exact', head: true }),
+        supabase.from('equipment_reservations').select('*', { count: 'exact', head: true }),
       ]);
       setLabs(labData || []);
       setReservations(resData || []);
-      setEquipCount(eqC || 0);
+      setEquipUnits((eqData || []).reduce((sum, e) => sum + (Number(e.quantity) || 0), 0));
+      setTotalReservations((totalLab || 0) + (totalEq || 0));
       setPendingCount((pendLab || 0) + (pendEq || 0));
       setLoading(false);
     };
@@ -35,9 +39,10 @@ const Dashboard = () => {
 
   // Only the cards an admin actually acts on / checks at a glance.
   const stats = [
-    { icon: Hourglass, label: 'Pending Requests', value: pendingCount, color: 'bg-warning/10 text-warning' },
+    { icon: Package, label: 'Equipment Units', value: equipUnits, color: 'bg-accent/10 text-accent' },
     { icon: FlaskConical, label: 'Labs Available', value: `${availLabs} / ${labs.length}`, color: 'bg-success/10 text-success' },
-    { icon: Package, label: 'Equipment Items', value: equipCount, color: 'bg-accent/10 text-accent' },
+    { icon: CalendarCheck, label: 'Total Reservations', value: totalReservations, color: 'bg-primary/10 text-primary' },
+    { icon: Hourglass, label: 'Pending Requests', value: pendingCount, color: 'bg-warning/10 text-warning' },
   ];
 
   return (
