@@ -25,17 +25,14 @@ const UserDashboard = () => {
   }, [user]);
 
   const total = reservations.length;
-  // Approved = already approved by admin (reserved / in use / completed)
-  const approved = reservations.filter((r) => ['reserved', 'in_use', 'completed'].includes(r.status)).length;
-  const rejected = reservations.filter((r) => r.status === 'rejected').length;
   const completed = reservations.filter((r) => r.status === 'completed').length;
   const cancelled = reservations.filter((r) => r.status === 'cancelled').length;
   const displayName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Researcher';
 
   return (
-    <div className="space-y-6">
-      {/* Contained green section: profile + quick action + calendar */}
-      <div className="rounded-3xl gradient-hero border border-primary/10 p-4 sm:p-6 space-y-6">
+    <div className="space-y-6 dash-black">
+      {/* Profile + quick action + calendar */}
+      <div className="space-y-6">
 
         {/* Profile row */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -58,37 +55,32 @@ const UserDashboard = () => {
           <div className="bg-card rounded-2xl p-5 shadow-card flex items-center gap-4">
             <div className="w-12 h-12 rounded-xl bg-success/10 text-success flex items-center justify-center flex-shrink-0"><CheckCircle2 className="w-6 h-6" /></div>
             <div>
-              <h3 className="font-heading text-2xl font-bold text-foreground leading-none">{loading ? '…' : approved}</h3>
-              <p className="text-xs text-muted-foreground mt-1">Total Approved</p>
+              <h3 className="font-heading text-2xl font-bold text-foreground leading-none">{loading ? '…' : completed}</h3>
+              <p className="text-xs text-muted-foreground mt-1">Completed</p>
             </div>
           </div>
           <div className="bg-card rounded-2xl p-5 shadow-card flex items-center gap-4">
             <div className="w-12 h-12 rounded-xl bg-destructive/10 text-destructive flex items-center justify-center flex-shrink-0"><XCircle className="w-6 h-6" /></div>
             <div>
-              <h3 className="font-heading text-2xl font-bold text-foreground leading-none">{loading ? '…' : rejected}</h3>
-              <p className="text-xs text-muted-foreground mt-1">Total Rejected</p>
+              <h3 className="font-heading text-2xl font-bold text-foreground leading-none">{loading ? '…' : cancelled}</h3>
+              <p className="text-xs text-muted-foreground mt-1">Cancelled</p>
             </div>
           </div>
         </div>
 
-        {/* Secondary mini stats + quick action */}
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <div className="flex gap-4 flex-wrap">
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-card/70 rounded-full px-3 py-1.5">
-              <CheckCircle2 className="w-3.5 h-3.5 text-success" /> {loading ? '…' : completed} Completed
-            </div>
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-card/70 rounded-full px-3 py-1.5">
-              <XCircle className="w-3.5 h-3.5 text-destructive" /> {loading ? '…' : cancelled} Cancelled
-            </div>
-          </div>
+        {/* Quick action */}
+        <div className="flex items-center justify-end flex-wrap gap-3">
           <Link to="/user/reserve" className="gradient-primary text-primary-foreground px-5 py-2.5 rounded-xl font-semibold text-sm no-underline hover:-translate-y-0.5 hover:shadow-lg transition-all inline-flex items-center gap-2">
             <FlaskConical className="w-4 h-4" /> New Reservation
           </Link>
         </div>
 
         {/* Reservations Calendar */}
-        <div className="bg-card rounded-2xl shadow-card overflow-hidden">
-          <div className="px-6 py-4 border-b border-border">
+        <div className="isolate bg-white/30 dark:bg-white/10 backdrop-blur-2xl backdrop-saturate-[1.8] border border-white/70 rounded-2xl
+            shadow-[0_8px_32px_rgba(20,60,40,0.12),inset_0_1px_1px_rgba(255,255,255,0.9),inset_0_0_24px_rgba(255,255,255,0.3)]
+            relative overflow-hidden">
+          <span aria-hidden className="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-b from-white/50 via-white/5 to-transparent" />
+          <div className="px-6 py-4 border-b border-white/40">
             <h2 className="font-heading text-sm font-bold text-primary">Reservation Calendar</h2>
           </div>
           <div className="p-6">

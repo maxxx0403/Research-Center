@@ -172,3 +172,12 @@
 .animate-bounce-scale {
   animation: bounce-scale 0.6s ease;
 }
+
+/* Dashboards: green text (scoped so the rest of the app keeps its colours).
+   Borders come from Glass.css: soft green containers, darker green fields. */
+.dash-green {
+  --foreground: 145 63% 22%;
+  --card-foreground: 145 63% 22%;
+  --muted-foreground: 145 50% 32%;
+  color: hsl(145 63% 22%);
+}

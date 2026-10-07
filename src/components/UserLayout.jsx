@@ -1,9 +1,10 @@
 import { Link, useLocation, Outlet, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, CalendarCheck, FlaskConical, MessageSquare, LogOut, ChevronLeft, ChevronDown, FileText, Package, Settings } from 'lucide-react';
-import { useState } from 'react';
+import { LayoutDashboard, CalendarCheck, FlaskConical, MessageSquare, LogOut, ChevronLeft, ChevronDown, FileText, Package, Settings, LifeBuoy, Flag } from 'lucide-react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import NotificationBell from '@/components/NotificationBell';
 import cvsuLogo from '@/assets/cvsu-logo.png';
+import '@/glass.css';
 
 const menuItems = [
 { to: '/user/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
@@ -11,7 +12,9 @@ const menuItems = [
 { to: '/user/reserve-equipment', icon: Package, label: 'Reserve Equipment' },
 { to: '/user/reservations', icon: CalendarCheck, label: 'My Reservations' },
 { to: '/user/feedback', icon: MessageSquare, label: 'Feedback' },
-{ to: '/user/forms', icon: FileText, label: 'Forms and Papers' }];
+{ to: '/user/forms', icon: FileText, label: 'Forms and Papers' },
+{ to: '/user/help', icon: LifeBuoy, label: 'Help & Support' },
+{ to: '/user/report-problem', icon: Flag, label: 'Report a Problem' }];
 
 
 const UserLayout = () => {
@@ -20,6 +23,12 @@ const UserLayout = () => {
   const { user, signOut, loading } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
+
+  // Every page starts at the top when you switch pages (e.g. Reserve Lab -> Reserve Equipment),
+  // instead of keeping the previous page's scroll position.
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+  }, [location.pathname]);
 
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center bg-muted/50"><div className="text-muted-foreground">Loading...</div></div>;
@@ -36,9 +45,19 @@ const UserLayout = () => {
   };
 
   return (
-    <div className="flex min-h-screen bg-muted/50 font-body">
+    <div className="glass-ui relative isolate flex min-h-screen bg-background font-body">
+      {/* Soft color blobs so the glass has something to blur */}
+      <div aria-hidden className="fixed inset-0 -z-10 pointer-events-none overflow-hidden">
+        <div className="absolute -top-28 -left-16 w-[520px] h-[520px] rounded-full bg-primary/35 blur-3xl" />
+        <div className="absolute -top-10 right-[2%] w-[460px] h-[460px] rounded-full bg-emerald-400/40 blur-3xl" />
+        <div className="absolute top-[40%] -left-24 w-[460px] h-[460px] rounded-full bg-lime-400/30 blur-3xl" />
+        <div className="absolute top-[30%] left-[45%] w-[380px] h-[380px] rounded-full bg-accent/20 blur-3xl" />
+        <div className="absolute top-[48%] -right-24 w-[480px] h-[480px] rounded-full bg-emerald-500/30 blur-3xl" />
+        <div className="absolute -bottom-28 left-[18%] w-[500px] h-[500px] rounded-full bg-primary/30 blur-3xl" />
+        <div className="absolute -bottom-16 right-[8%] w-[420px] h-[420px] rounded-full bg-emerald-400/35 blur-3xl" />
+      </div>
       <div className={`fixed inset-0 bg-foreground/50 z-40 lg:hidden transition-opacity duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${sidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} onClick={() => setSidebarOpen(false)} />
-      <aside className={`w-[260px] ${sidebarOpen ? '' : 'lg:w-16'} min-h-screen gradient-sidebar text-primary-foreground fixed top-0 left-0 z-50 flex flex-col transition-[transform,width] duration-[350ms] ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform motion-reduce:transition-none ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
+      <aside className={`w-[260px] ${sidebarOpen ? '' : 'lg:w-16'} min-h-screen bg-primary/80 backdrop-blur-2xl backdrop-saturate-150 border-r border-white/20 shadow-[8px_0_32px_rgba(20,60,40,0.15)] text-primary-foreground fixed top-0 left-0 z-50 flex flex-col transition-[transform,width] duration-[350ms] ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform motion-reduce:transition-none ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
         <div className={`p-5 ${sidebarOpen ? '' : 'lg:px-[14px]'} border-b border-primary-foreground/10 transition-[padding] duration-[350ms] ease-[cubic-bezier(0.22,1,0.36,1)]`}>
           <div className="flex items-center gap-3">
             <img src={cvsuLogo} alt="CvSU Logo" className="w-9 h-9 flex-shrink-0" width={36} height={36} />
@@ -61,7 +80,7 @@ const UserLayout = () => {
       </aside>
 
       <div className={`flex-1 flex flex-col min-h-screen transition-[margin] duration-[350ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${sidebarOpen ? 'lg:ml-[260px]' : 'lg:ml-16'}`}>
-        <header className="bg-card border-b border-border px-6 py-3.5 flex justify-between items-center sticky top-0 z-30 shadow-sm">
+        <header className="bg-white/40 backdrop-blur-2xl backdrop-saturate-150 border-b border-white/60 px-6 py-3.5 flex justify-between items-center sticky top-0 z-30 shadow-[0_4px_24px_rgba(20,60,40,0.08)]">
           <div className="flex items-center gap-3">
             <button onClick={() => setSidebarOpen(!sidebarOpen)} aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'} className="bg-transparent border-none text-foreground cursor-pointer p-1.5 rounded-lg hover:bg-muted active:scale-90 transition-all duration-200"><ChevronLeft className={`w-5 h-5 transition-transform duration-[350ms] ease-[cubic-bezier(0.22,1,0.36,1)] ${sidebarOpen ? 'rotate-0' : 'rotate-180'}`} /></button>
             <h1 className="font-heading text-base font-bold text-foreground">{menuItems.find((m) => m.to === location.pathname)?.label || 'Research Panel'}</h1>
@@ -70,7 +89,7 @@ const UserLayout = () => {
             <NotificationBell reservationsLink="/user/reservations" />
             <div className="relative">
               <button onClick={() => setMenuOpen(!menuOpen)}
-                className="flex items-center gap-2 pl-3 pr-2 py-2 rounded-lg bg-muted hover:bg-muted/70 text-foreground border-none cursor-pointer transition-colors">
+                className="flex items-center gap-2 pl-3 pr-2 py-2 rounded-lg bg-white/50 hover:bg-white/70 text-foreground border-none cursor-pointer transition-colors">
                 <span className="text-sm font-semibold text-foreground hidden sm:inline max-w-[140px] truncate">
                   {user?.user_metadata?.full_name || user?.email?.split('@')[0]}
                 </span>
@@ -80,7 +99,7 @@ const UserLayout = () => {
               {menuOpen &&
               <>
                   <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
-                  <div className="absolute right-0 top-[calc(100%+0.5rem)] z-50 w-56 bg-card border border-border rounded-2xl shadow-xl overflow-hidden animate-fade-up p-2">
+                  <div className="absolute right-0 top-[calc(100%+0.5rem)] z-50 w-56 bg-white/85 backdrop-blur-2xl border border-white/70 rounded-2xl shadow-xl overflow-hidden animate-fade-up p-2">
                     <div className="px-4 py-2.5 border-b border-border mb-1">
                       <p className="text-xs font-semibold text-foreground truncate">{user?.email}</p>
                     </div>

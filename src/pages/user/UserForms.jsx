@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Download, Upload, FileText, Trash2, CheckCircle2, AlertCircle, Eye } from 'lucide-react';
+import { Download, Upload, FileText, Trash2, CheckCircle2, AlertCircle } from 'lucide-react';
 import RowActions from '@/components/RowActions';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -232,8 +232,6 @@ const UserForms = () => {
                         )}
                         <RowActions
                           items={[
-                            { label: 'View file', icon: Eye, href: urlData?.publicUrl, hidden: !urlData?.publicUrl },
-                            { separator: true },
                             { label: 'Delete', icon: Trash2, destructive: true, onClick: () => handleDelete(s) },
                           ]}
                         />
@@ -304,8 +302,6 @@ const UserForms = () => {
                         <td className="px-4 py-3">
                           <RowActions
                             items={[
-                              { label: 'View file', icon: Eye, href: urlData?.publicUrl, hidden: !urlData?.publicUrl },
-                              { separator: true },
                               { label: 'Delete', icon: Trash2, destructive: true, onClick: () => handleDelete(s) },
                             ]}
                           />

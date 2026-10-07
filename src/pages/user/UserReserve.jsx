@@ -4,6 +4,7 @@ import { FlaskConical, Info, CheckCircle2, Package, X, Plus, Trash2, Clock, User
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import BookingDateTimeInput from '@/components/BookingDateTimeInput';
+import FormSelect from '@/components/FormSelect';
 import {
   checkLabReservationConflict,
   checkEquipmentAvailability,
@@ -441,7 +442,7 @@ const UserReserve = () => {
 
         {/* STAKEHOLDER INFORMATION */}
         <div>
-          <h3 className="font-heading text-sm font-bold text-primary uppercase tracking-wider border-b-2 border-primary/20 pb-2 mb-5">
+          <h3 className="font-heading text-sm font-bold text-primary uppercase tracking-wider border-b-2 border-foreground/10 pb-2 mb-5">
             Stakeholder Information
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -513,8 +514,8 @@ const UserReserve = () => {
                     className={
                       'inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 cursor-pointer text-sm font-medium transition-all ' +
                       (stakeholderType === opt.value
-                        ? 'border-primary bg-primary/10 text-primary'
-                        : 'border-border bg-card text-muted-foreground hover:border-primary/50')
+                        ? '!border-[color:var(--field-border)] bg-primary/10 text-primary'
+                        : '!border-[color:var(--field-border)] bg-card text-muted-foreground')
                     }
                   >
                     <input
@@ -559,7 +560,7 @@ const UserReserve = () => {
 
         {/* REQUEST DETAILS */}
         <div>
-          <h3 className="font-heading text-sm font-bold text-primary uppercase tracking-wider border-b-2 border-primary/20 pb-2 mb-5">
+          <h3 className="font-heading text-sm font-bold text-primary uppercase tracking-wider border-b-2 border-foreground/10 pb-2 mb-5">
             Request Details
           </h3>
 
@@ -585,10 +586,10 @@ const UserReserve = () => {
                 <Plus className="w-3.5 h-3.5" /> Add Member
               </button>
             </div>
-            <div className="rounded-xl border-2 border-border overflow-hidden overflow-x-auto">
+            <div className="rounded-xl border-2 !border-[color:var(--field-border)] overflow-hidden overflow-x-auto">
               <table className="w-full text-sm min-w-[480px]">
                 <thead>
-                  <tr className="bg-muted/60 border-b-2 border-border">
+                  <tr className="bg-muted/60 border-b-2 !border-[color:var(--field-border)]">
                     <th className="px-4 py-2.5 text-left text-xs font-bold text-muted-foreground uppercase w-12">#</th>
                     <th className="px-4 py-2.5 text-left text-xs font-bold text-muted-foreground uppercase">Full Name</th>
                     <th className="px-4 py-2.5 text-left text-xs font-bold text-muted-foreground uppercase">Student Number</th>
@@ -661,7 +662,7 @@ const UserReserve = () => {
                   key={idx}
                   className={
                     'rounded-2xl border-2 p-5 space-y-4 ' +
-                    (isFirst ? 'border-primary/30 bg-primary/5' : 'border-border bg-muted/20')
+                    (isFirst ? '!border-[color:var(--field-border)] bg-white/30' : '!border-[color:var(--field-border)] bg-white/20')
                   }
                 >
                   <div className="flex gap-2 items-center">
@@ -675,26 +676,19 @@ const UserReserve = () => {
                     >
                       {isFirst ? 'Primary' : `Lab #${idx + 1}`}
                     </span>
-                    <select
+                    <FormSelect
                       value={entry.labId}
-                      onChange={(e) => updateLabField(idx, 'labId', Number(e.target.value))}
+                      onChange={(v) => updateLabField(idx, 'labId', Number(v))}
+                      placeholder="Select a laboratory…"
                       className={inputClass + ' flex-1'}
-                      required={isFirst}
-                    >
-                      <option value={0}>Select a laboratory…</option>
-                      {labs.map((l) => (
-                        <option
-                          key={l.id}
-                          value={l.id}
-                          disabled={
-                            selectedLabs.some((s, si) => si !== idx && s.labId === l.id) ||
-                            l.status === 'maintenance'
-                          }
-                        >
-                          {l.lab_name} ({l.lab_code}){l.status === 'maintenance' ? ' — Under Maintenance' : ''}
-                        </option>
-                      ))}
-                    </select>
+                      options={labs.map((l) => ({
+                        value: l.id,
+                        label: `${l.lab_name} (${l.lab_code})${l.status === 'maintenance' ? ' — Under Maintenance' : ''}`,
+                        disabled:
+                          selectedLabs.some((s, si) => si !== idx && s.labId === l.id) ||
+                          l.status === 'maintenance',
+                      }))}
+                    />
                     {!isFirst && (
                       <button
                         type="button"
@@ -707,7 +701,7 @@ const UserReserve = () => {
                   </div>
 
                   {lab && (
-                    <div className={`border rounded-xl p-4 text-sm flex items-start gap-3 ${lab.status === 'maintenance' ? 'bg-destructive/5 border-destructive/25' : 'bg-card border-primary/15'}`}>
+                    <div className={`border rounded-xl p-4 text-sm flex items-start gap-3 ${lab.status === 'maintenance' ? 'bg-destructive/5 border-destructive/25' : 'bg-card !border-[color:var(--field-border)]'}`}>
                       <Info className={`w-5 h-5 flex-shrink-0 mt-0.5 ${lab.status === 'maintenance' ? 'text-destructive' : 'text-primary'}`} />
                       <div>
                         <p className={`font-semibold mb-1 ${lab.status === 'maintenance' ? 'text-destructive' : 'text-primary'}`}>
@@ -735,7 +729,7 @@ const UserReserve = () => {
                       <Clock className="w-3.5 h-3.5 text-primary" /> Schedule
                       <span className="text-destructive">*</span>
                     </p>
-                    <div className="mb-3 flex items-start gap-2 rounded-xl border border-primary/30 bg-primary/5 px-3 py-2.5 text-xs text-foreground">
+                    <div className="mb-3 flex items-start gap-2 rounded-xl border-2 !border-[color:var(--field-border)] bg-white/30 px-3 py-2.5 text-xs text-foreground">
                       <Info className="w-4 h-4 flex-shrink-0 mt-0.5 text-primary" />
                       <p>
                         <span className="font-bold">Note:</span> Reservations must be made at least{' '}
@@ -781,32 +775,28 @@ const UserReserve = () => {
             </p>
 
             {validLabs.length === 0 ? (
-              <div className="flex items-start gap-2 rounded-xl border border-primary/30 bg-primary/5 px-3 py-2.5 text-xs text-foreground">
+              <div className="flex items-start gap-2 rounded-xl border-2 !border-[color:var(--field-border)] bg-white/30 px-3 py-2.5 text-xs text-foreground">
                 <Info className="w-4 h-4 flex-shrink-0 mt-0.5 text-primary" />
                 <p>
                   Select at least one laboratory above first — only equipment available in your chosen lab(s) will be shown here.
                 </p>
               </div>
             ) : (
-              <select
-                value={0}
-                onChange={(e) => {
-                  if (Number(e.target.value) > 0) {
-                    addEquipment(Number(e.target.value));
-                    e.target.value = '0';
-                  }
+              <FormSelect
+                value=""
+                onChange={(v) => {
+                  if (Number(v) > 0) addEquipment(Number(v));
                 }}
+                placeholder="Select equipment to add…"
                 className={inputClass}
-              >
-                <option value={0}>Select equipment to add…</option>
-                {eligibleEquipment
+                options={eligibleEquipment
                   .filter((eq) => !selectedEquipments.find((se) => se.equipmentId === eq.id))
-                  .map((eq) => (
-                    <option key={eq.id} value={eq.id} disabled={eq.status === 'maintenance'}>
-                      {eq.name} — {eq.laboratories?.lab_name || 'Any lab'}{eq.status === 'maintenance' ? ' (Under Maintenance)' : ''}
-                    </option>
-                  ))}
-              </select>
+                  .map((eq) => ({
+                    value: eq.id,
+                    label: `${eq.name} — ${eq.laboratories?.lab_name || 'Any lab'}${eq.status === 'maintenance' ? ' (Under Maintenance)' : ''}`,
+                    disabled: eq.status === 'maintenance',
+                  }))}
+              />
             )}
 
             {selectedEquipments.length > 0 && (
@@ -820,7 +810,7 @@ const UserReserve = () => {
                     return (
                       <div
                         key={eq.equipmentId}
-                        className="rounded-xl border-2 border-border bg-secondary/30 p-4 space-y-3"
+                        className="rounded-xl border-2 !border-[color:var(--field-border)] bg-white/30 p-4 space-y-3"
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex-1">
@@ -857,28 +847,24 @@ const UserReserve = () => {
                             <span className="text-destructive">*</span>
                           </label>
                           {eqData?.laboratory_id ? (
-                            <div className="w-full px-3 py-2 border-2 border-border rounded-xl text-sm bg-muted/40 text-foreground">
+                            <div className="w-full px-3 py-2 border-2 border-[color:var(--field-border)] rounded-xl text-sm bg-white/55 text-foreground">
                               {eqData.laboratories?.lab_name || `Lab #${eqData.laboratory_id}`}
                               <span className="text-xs text-muted-foreground"> (fixed — this equipment belongs to this lab)</span>
                             </div>
                           ) : (
-                            <select
-                              value={eq.labIdx}
-                              onChange={(e) => updateEquipmentLabIdx(eq.equipmentId, Number(e.target.value))}
+                            <FormSelect
+                              value={validLabs.length === 0 ? '' : String(eq.labIdx)}
+                              onChange={(v) => updateEquipmentLabIdx(eq.equipmentId, Number(v))}
+                              placeholder="Select a lab first…"
                               className="w-full px-3 py-2 border-2 border-border rounded-xl text-sm bg-card text-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10"
-                              required
-                            >
-                              {validLabs.length === 0 && <option value={0}>Select a lab first…</option>}
-                              {validLabs.map((entry, idx) => {
+                              options={validLabs.map((entry, idx) => {
                                 const lab = labs.find((l) => l.id === entry.labId);
-                                return (
-                                  <option key={idx} value={idx}>
-                                    {lab?.lab_name || `Lab #${idx + 1}`}
-                                    {entry.startDatetime ? ` — ${new Date(manilaInputToISO(entry.startDatetime)).toLocaleDateString('en-US', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric' })} ${new Date(manilaInputToISO(entry.startDatetime)).toLocaleTimeString('en-US', { timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit' })}` : ''}
-                                  </option>
-                                );
+                                const when = entry.startDatetime
+                                  ? ` — ${new Date(manilaInputToISO(entry.startDatetime)).toLocaleDateString('en-US', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric' })} ${new Date(manilaInputToISO(entry.startDatetime)).toLocaleTimeString('en-US', { timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit' })}`
+                                  : '';
+                                return { value: idx, label: `${lab?.lab_name || `Lab #${idx + 1}`}${when}` };
                               })}
-                            </select>
+                            />
                           )}
                           {(() => {
                             const assignedLab = validLabs[eq.labIdx];
@@ -902,7 +888,7 @@ const UserReserve = () => {
 
         {/* PURPOSE & SPECIAL REQUIREMENTS */}
         <div>
-          <h3 className="font-heading text-sm font-bold text-primary uppercase tracking-wider border-b-2 border-primary/20 pb-2 mb-5">
+          <h3 className="font-heading text-sm font-bold text-primary uppercase tracking-wider border-b-2 border-foreground/10 pb-2 mb-5">
             Purpose & Requirements
           </h3>
           <div className="space-y-6">

@@ -131,11 +131,11 @@ const UserFeedback = () => {
           <div className="text-center text-sm text-muted-foreground">
             {rating > 0 && (
               <>
-                {rating === 1 && '😞 Poor'}
-                {rating === 2 && '😕 Fair'}
-                {rating === 3 && '😐 Good'}
-                {rating === 4 && '😊 Very Good'}
-                {rating === 5 && '😍 Excellent'}
+                {rating === 1 && 'Poor'}
+                {rating === 2 && 'Fair'}
+                {rating === 3 && 'Good'}
+                {rating === 4 && 'Very Good'}
+                {rating === 5 && 'Excellent'}
               </>
             )}
           </div>

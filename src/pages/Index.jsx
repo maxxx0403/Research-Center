@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { FlaskConical, Microscope, Star, Send, Users, Calendar, Award, ChevronRight, CheckCircle2, Package, FileText, Download, Shield, Search, Lock } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import StatusBadge from '@/components/StatusBadge';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
 import cvsuLogo from '@/assets/cvsu-logo.png';
 
@@ -123,7 +124,7 @@ const Index = () => {
               Book laboratories, reserve equipment, submit research papers, and manage your research workflow — all in one platform.
             </p>
             <div className="flex gap-4 justify-center flex-wrap">
-              <Link to="/login" className="gradient-primary text-primary-foreground px-8 py-4 rounded-xl font-semibold text-base no-underline shadow-lg hover:-translate-y-1 hover:shadow-xl transition-all inline-flex items-center gap-2">
+              <Link to="/login" className="bg-card text-primary border-2 border-primary px-8 py-4 rounded-xl font-semibold text-base no-underline shadow-lg cursor-pointer hover:bg-primary hover:text-primary-foreground hover:-translate-y-1 hover:scale-[1.03] hover:shadow-2xl active:scale-[0.98] active:translate-y-0 transition-all duration-200 inline-flex items-center gap-2">
                 <Calendar className="w-5 h-5" /> Reserve Now
               </Link>
               <a href="#laboratories" className="bg-card text-primary border-2 border-primary px-8 py-4 rounded-xl font-semibold text-base no-underline hover:bg-primary hover:text-primary-foreground hover:-translate-y-1 transition-all inline-flex items-center gap-2">
@@ -171,16 +172,36 @@ const Index = () => {
               className="w-full pl-10 pr-4 py-3 border-2 border-white/70 rounded-lg text-sm bg-white/50 backdrop-blur-xl text-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 transition-colors"
             />
           </div>
-          <select
-            value={labStatusFilter}
-            onChange={(e) => setLabStatusFilter(e.target.value)}
-            className="px-4 py-3 border-2 border-white/70 rounded-lg text-sm bg-white/50 backdrop-blur-xl text-foreground focus:outline-none focus:border-primary sm:w-56"
-          >
-            <option value="all">All statuses</option>
-            <option value="available">Available</option>
-            <option value="occupied">Occupied</option>
-            <option value="maintenance">Under Maintenance</option>
-          </select>
+          <Select value={labStatusFilter} onValueChange={setLabStatusFilter}>
+            <SelectTrigger className="px-4 py-3 h-auto border-2 border-white/70 rounded-lg text-sm bg-white/50 backdrop-blur-xl text-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 sm:w-56">
+              <SelectValue placeholder="All statuses" />
+            </SelectTrigger>
+            <SelectContent className="isolate bg-white/40 dark:bg-white/10 backdrop-blur-2xl backdrop-saturate-[1.8] border border-white/70
+                shadow-[0_8px_32px_rgba(20,60,40,0.18),inset_0_1px_1px_rgba(255,255,255,0.9),inset_0_0_24px_rgba(255,255,255,0.3)]
+                relative overflow-hidden">
+              <span aria-hidden className="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-b from-white/50 via-white/5 to-transparent" />
+              <SelectItem value="all" className="focus:bg-white/60 focus:text-foreground rounded-lg">
+                <span className="inline-flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-muted-foreground/50" /> All statuses
+                </span>
+              </SelectItem>
+              <SelectItem value="available" className="focus:bg-white/60 focus:text-foreground rounded-lg">
+                <span className="inline-flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-success" /> Available
+                </span>
+              </SelectItem>
+              <SelectItem value="occupied" className="focus:bg-white/60 focus:text-foreground rounded-lg">
+                <span className="inline-flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-warning" /> Occupied
+                </span>
+              </SelectItem>
+              <SelectItem value="maintenance" className="focus:bg-white/60 focus:text-foreground rounded-lg">
+                <span className="inline-flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-destructive" /> Under Maintenance
+                </span>
+              </SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         {filteredLabs.length === 0 ?
@@ -208,7 +229,7 @@ const Index = () => {
               </div>
               {lab.status === 'available' ?
             <Link to="/login"
-            className="w-full py-3 gradient-primary text-primary-foreground border-none rounded-lg font-semibold text-sm no-underline flex items-center justify-center gap-1.5 hover:-translate-y-0.5 hover:shadow-lg transition-all">
+            className="w-full py-3 gradient-primary text-primary-foreground border-none rounded-lg font-semibold text-sm no-underline flex items-center justify-center gap-1.5 cursor-pointer hover:-translate-y-0.5 hover:scale-[1.02] hover:brightness-110 hover:shadow-lg active:scale-[0.98] active:translate-y-0 transition-all duration-200">
                   Reserve Now <ChevronRight className="w-4 h-4" />
                 </Link> :
 

@@ -4,6 +4,7 @@ import { Package, CheckCircle2, Info, Clock, Users, Plus, X, AlertCircle, Hash }
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import BookingDateTimeInput from '@/components/BookingDateTimeInput';
+import FormSelect from '@/components/FormSelect';
 import { validateReservationFields, sanitizeText } from '@/lib/validation';
 import { earliestBookableInput, earliestBookableLabel, manilaInputToISO, validateBookingDateTime, MIN_ADVANCE_DAYS } from '@/lib/timezone';
 
@@ -300,7 +301,7 @@ const UserReserveEquipment = () => {
 
         {/* STAKEHOLDER INFORMATION */}
         <div>
-          <h3 className="font-heading text-sm font-bold text-primary uppercase tracking-wider border-b-2 border-primary/20 pb-2 mb-5">
+          <h3 className="font-heading text-sm font-bold text-primary uppercase tracking-wider border-b-2 border-foreground/10 pb-2 mb-5">
             Stakeholder Information
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -372,8 +373,8 @@ const UserReserveEquipment = () => {
                     className={
                       'inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 cursor-pointer text-sm font-medium transition-all ' +
                       (stakeholderType === opt.value
-                        ? 'border-primary bg-primary/10 text-primary'
-                        : 'border-border bg-card text-muted-foreground hover:border-primary/50')
+                        ? '!border-[color:var(--field-border)] bg-primary/10 text-primary'
+                        : '!border-[color:var(--field-border)] bg-card text-muted-foreground')
                     }
                   >
                     <input
@@ -418,7 +419,7 @@ const UserReserveEquipment = () => {
 
         {/* REQUEST DETAILS */}
         <div>
-          <h3 className="font-heading text-sm font-bold text-primary uppercase tracking-wider border-b-2 border-primary/20 pb-2 mb-5">
+          <h3 className="font-heading text-sm font-bold text-primary uppercase tracking-wider border-b-2 border-foreground/10 pb-2 mb-5">
             Request Details
           </h3>
 
@@ -444,10 +445,10 @@ const UserReserveEquipment = () => {
                 <Plus className="w-3.5 h-3.5" /> Add Member
               </button>
             </div>
-            <div className="rounded-xl border-2 border-border overflow-hidden overflow-x-auto">
+            <div className="rounded-xl border-2 !border-[color:var(--field-border)] overflow-hidden overflow-x-auto">
               <table className="w-full text-sm min-w-[480px]">
                 <thead>
-                  <tr className="bg-muted/60 border-b-2 border-border">
+                  <tr className="bg-muted/60 border-b-2 !border-[color:var(--field-border)]">
                     <th className="px-4 py-2.5 text-left text-xs font-bold text-muted-foreground uppercase w-12">#</th>
                     <th className="px-4 py-2.5 text-left text-xs font-bold text-muted-foreground uppercase">Full Name</th>
                     <th className="px-4 py-2.5 text-left text-xs font-bold text-muted-foreground uppercase">Student Number</th>
@@ -496,7 +497,7 @@ const UserReserveEquipment = () => {
             </div>
           </div>
 
-          <div className="rounded-2xl border-2 border-primary/30 bg-primary/5 p-5 space-y-4">
+          <div className="rounded-2xl border-2 !border-[color:var(--field-border)] bg-white/30 p-5 space-y-4">
             <div className="flex items-center justify-between">
               <label className="font-semibold text-sm text-foreground flex items-center gap-1.5">
                 <Package className="w-4 h-4 text-primary" />
@@ -515,21 +516,19 @@ const UserReserveEquipment = () => {
               {items.map((item, idx) => {
                 const eq = equipment.find((e) => e.id === item.equipmentId);
                 return (
-                  <div key={idx} className="rounded-xl border border-primary/15 bg-card p-4 space-y-3">
+                  <div key={idx} className="rounded-xl border-2 !border-[color:var(--field-border)] bg-card p-4 space-y-3">
                     <div className="flex gap-2 items-start">
-                      <select
+                      <FormSelect
                         value={item.equipmentId}
-                        onChange={(ev) => updateItemEquipment(idx, Number(ev.target.value))}
+                        onChange={(v) => updateItemEquipment(idx, Number(v))}
+                        placeholder="Select equipment…"
                         className={inputClass + ' flex-1'}
-                        required
-                      >
-                        <option value={0}>Select equipment…</option>
-                        {equipmentOptionsFor(idx).map((option) => (
-                          <option key={option.id} value={option.id} disabled={option.status === 'maintenance'}>
-                            {option.name} — {option.laboratories?.lab_name} ({option.laboratories?.lab_code}){option.status === 'maintenance' ? ' — Under Maintenance' : ''}
-                          </option>
-                        ))}
-                      </select>
+                        options={equipmentOptionsFor(idx).map((option) => ({
+                          value: option.id,
+                          label: `${option.name} — ${option.laboratories?.lab_name} (${option.laboratories?.lab_code})${option.status === 'maintenance' ? ' — Under Maintenance' : ''}`,
+                          disabled: option.status === 'maintenance',
+                        }))}
+                      />
                       <div className="w-28">
                         <input
                           type="number"
@@ -554,7 +553,7 @@ const UserReserveEquipment = () => {
                     </div>
 
                     {eq && (
-                      <div className={`border rounded-xl p-4 text-sm flex items-start gap-3 ${eq.status === 'maintenance' ? 'bg-destructive/5 border-destructive/25' : 'bg-primary/5 border-primary/15'}`}>
+                      <div className={`border rounded-xl p-4 text-sm flex items-start gap-3 ${eq.status === 'maintenance' ? 'bg-destructive/5 border-destructive/25' : 'bg-white/30 !border-[color:var(--field-border)]'}`}>
                         <Info className={`w-5 h-5 flex-shrink-0 mt-0.5 ${eq.status === 'maintenance' ? 'text-destructive' : 'text-primary'}`} />
                         <div>
                           <p className={`font-semibold mb-1 ${eq.status === 'maintenance' ? 'text-destructive' : 'text-primary'}`}>
@@ -593,7 +592,7 @@ const UserReserveEquipment = () => {
                 <Clock className="w-3.5 h-3.5 text-primary" /> Schedule
                 <span className="text-destructive">*</span>
               </p>
-              <div className="mb-3 flex items-start gap-2 rounded-xl border border-primary/30 bg-primary/5 px-3 py-2.5 text-xs text-foreground">
+              <div className="mb-3 flex items-start gap-2 rounded-xl border-2 !border-[color:var(--field-border)] bg-white/30 px-3 py-2.5 text-xs text-foreground">
                 <Info className="w-4 h-4 flex-shrink-0 mt-0.5 text-primary" />
                 <p>
                   <span className="font-bold">Note:</span> Reservations must be made at least{' '}
@@ -628,7 +627,7 @@ const UserReserveEquipment = () => {
 
         {/* PURPOSE & SPECIAL REQUIREMENTS */}
         <div>
-          <h3 className="font-heading text-sm font-bold text-primary uppercase tracking-wider border-b-2 border-primary/20 pb-2 mb-5">
+          <h3 className="font-heading text-sm font-bold text-primary uppercase tracking-wider border-b-2 border-foreground/10 pb-2 mb-5">
             Purpose & Requirements
           </h3>
           <div className="space-y-6">

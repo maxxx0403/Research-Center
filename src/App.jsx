@@ -37,6 +37,9 @@ import UserCalendarReservations from "./pages/user/UserCalendarReservations";
 import UserFeedback from "./pages/user/UserFeedback";
 import UserForms from "./pages/user/UserForms";
 import UserSettings from "./pages/user/UserSettings";
+import ProblemReports from "./pages/admin/ProblemReports";
+import UserHelp from "./pages/user/UserHelp";
+import UserReportProblem from "./pages/user/UserReportProblem";
 import ResetPassword from "./pages/ResetPassword";
 import NotFound from "./pages/NotFound";
 
@@ -65,6 +68,7 @@ const App = () =>
               <Route path="equipment-reservations" element={<Navigate to="/admin/reservations" replace />} />
               <Route path="submissions" element={<AdminSubmissions />} />
               <Route path="feedbacks" element={<Feedbacks />} />
+              <Route path="problem-reports" element={<ProblemReports />} />
               <Route path="reports" element={<Reports />} />
               <Route path="activity-logs" element={<ActivityLogs />} />
               <Route path="settings" element={<AdminSettings />} />
@@ -89,6 +93,8 @@ const App = () =>
               <Route path="feedback" element={<UserFeedback />} />
               <Route path="forms" element={<UserForms />} />
               <Route path="settings" element={<UserSettings />} />
+              <Route path="help" element={<UserHelp />} />
+              <Route path="report-problem" element={<UserReportProblem />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>

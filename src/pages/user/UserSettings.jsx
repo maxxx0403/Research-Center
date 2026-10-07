@@ -14,6 +14,11 @@ const UserSettings = () => {
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
 
+  // The name comes from the account and cannot be edited.
+  // (Only if the account somehow has no name yet, the field stays open so it can be filled in once.)
+  const accountName = user?.user_metadata?.full_name || '';
+  const nameLocked = !!accountName.trim();
+
   useEffect(() => {
     if (user?.user_metadata?.full_name) {
       setFullName(user.user_metadata.full_name);
@@ -23,6 +28,7 @@ const UserSettings = () => {
   // Update Full Name / Username
   const handleUpdateProfile = async (e) => {
     e.preventDefault();
+    if (nameLocked) return;
     if (!fullName.trim()) {
       toast.error('Name cannot be empty.');
       return;
@@ -71,8 +77,9 @@ const UserSettings = () => {
         <p className="text-xs text-muted-foreground">Manage your profile and account settings</p>
       </div>
 
-      {/* Profile / Username Section */}
+      {/* One container: Profile Settings + Change Password */}
       <div className="bg-card rounded-xl shadow-card overflow-hidden">
+        {/* Profile Settings */}
         <div className="px-6 py-4 border-b border-border flex items-center gap-2">
           <User className="w-4 h-4 text-primary" />
           <h2 className="font-heading text-sm font-bold">Profile Settings</h2>
@@ -80,32 +87,38 @@ const UserSettings = () => {
         <form onSubmit={handleUpdateProfile} className="p-6 space-y-4">
           <div>
             <label className="block text-xs font-semibold text-foreground mb-1">Email</label>
-            <input value={user?.email || ''} disabled className={`${inputCls} opacity-60 cursor-not-allowed`} />
+            <input value={user?.email || ''} readOnly className={`${inputCls} opacity-60 cursor-not-allowed`} />
           </div>
           <div>
-            <label className="block text-xs font-semibold text-foreground mb-1">Full Name / Username</label>
+            <label className="block text-xs font-semibold text-foreground mb-1">
+              Full Name <span className="text-destructive">*</span>
+            </label>
             <input
               type="text"
-              value={fullName}
+              value={nameLocked ? accountName : fullName}
               onChange={(e) => setFullName(e.target.value)}
-              placeholder="Enter your name"
-              className={inputCls}
+              readOnly={nameLocked}
+              placeholder="Enter your full name"
+              className={`${inputCls} ${nameLocked ? 'opacity-60 cursor-not-allowed' : ''}`}
               required
             />
+            {nameLocked && (
+              <p className="text-[0.7rem] text-muted-foreground mt-1">Your name is set by your account and can't be changed.</p>
+            )}
           </div>
-          <button
-            type="submit"
-            disabled={savingProfile}
-            className="gradient-primary text-primary-foreground px-6 py-2.5 rounded-lg font-semibold text-sm border-none cursor-pointer hover:-translate-y-0.5 hover:shadow-lg transition-all disabled:opacity-50"
-          >
-            {savingProfile ? 'Saving…' : 'Update Profile'}
-          </button>
+          {!nameLocked && (
+            <button
+              type="submit"
+              disabled={savingProfile}
+              className="gradient-primary text-primary-foreground px-6 py-2.5 rounded-lg font-semibold text-sm border-none cursor-pointer hover:-translate-y-0.5 hover:shadow-lg transition-all disabled:opacity-50"
+            >
+              {savingProfile ? 'Saving…' : 'Save Name'}
+            </button>
+          )}
         </form>
-      </div>
 
-      {/* Security Section */}
-      <div className="bg-card rounded-xl shadow-card overflow-hidden">
-        <div className="px-6 py-4 border-b border-border flex items-center gap-2">
+        {/* Change Password */}
+        <div className="px-6 py-4 border-y border-border flex items-center gap-2">
           <KeyRound className="w-4 h-4 text-primary" />
           <h2 className="font-heading text-sm font-bold">Change Password</h2>
         </div>

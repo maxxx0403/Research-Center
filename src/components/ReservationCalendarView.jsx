@@ -145,10 +145,10 @@ export const ReservationCalendarView = ({ labId = null }) => {
           </p>
         </div>
         <div className="flex gap-2">
-          <button onClick={previousMonth} className="p-2 rounded-lg bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors">
+          <button onClick={previousMonth} className="p-2 rounded-lg bg-white/40 backdrop-blur-xl border border-white/70 text-primary hover:bg-white/60 transition-colors">
             <ChevronLeft className="w-5 h-5" />
           </button>
-          <button onClick={nextMonth} className="p-2 rounded-lg bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors">
+          <button onClick={nextMonth} className="p-2 rounded-lg bg-white/40 backdrop-blur-xl border border-white/70 text-primary hover:bg-white/60 transition-colors">
             <ChevronRight className="w-5 h-5" />
           </button>
         </div>
@@ -156,7 +156,7 @@ export const ReservationCalendarView = ({ labId = null }) => {
 
       <div className="flex gap-4 mb-4 flex-wrap">
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <div className="w-3 h-3 rounded bg-muted border border-border" />
+          <div className="w-3 h-3 rounded bg-white/40 backdrop-blur-xl border border-white/70" />
           Available
         </div>
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -199,9 +199,9 @@ export const ReservationCalendarView = ({ labId = null }) => {
               key={idx}
               onClick={() => { if (!day || closed || isPast) return; setSelectedDate(selectedDate === day ? null : day); }}
               title={unavailableStaff.length > 0 ? `Unavailable: ${unavailableStaff.map((s) => `${s.name} (${s.roomLabel})`).join(', ')}` : undefined}
-              className={`min-h-[60px] sm:min-h-[80px] md:min-h-[100px] p-1.5 sm:p-2 rounded-lg border-2 transition-colors
-                ${!day ? 'bg-muted/20 border-transparent' : ''}
-                ${closed ? 'bg-destructive/5 border-destructive/20 cursor-not-allowed' : isPast ? 'bg-muted/30 border-border/60 opacity-60 cursor-not-allowed' : isToday ? 'border-primary bg-primary/5 cursor-pointer' : isSelected ? 'bg-primary/10 border-primary cursor-pointer' : day ? 'border-border hover:border-primary/50 hover:bg-primary/5 cursor-pointer' : ''}
+              className={`min-h-[60px] sm:min-h-[80px] md:min-h-[100px] p-1.5 sm:p-2 rounded-lg border-2 backdrop-blur-xl transition-colors
+                ${!day ? 'bg-white/5 border-transparent' : ''}
+                ${closed ? 'bg-destructive/10 border-destructive/20 cursor-not-allowed' : isPast ? 'bg-white/10 border-white/40 opacity-60 cursor-not-allowed' : isToday ? 'border-primary bg-primary/10 cursor-pointer' : isSelected ? 'bg-primary/15 border-primary cursor-pointer' : day ? 'bg-white/40 border-white/70 hover:border-primary/50 hover:bg-primary/10 cursor-pointer' : ''}
               `}
             >
               {day && (
@@ -243,7 +243,10 @@ export const ReservationCalendarView = ({ labId = null }) => {
       </div>
 
       {selectedDate && !isWeekend(currentDate.getFullYear(), currentDate.getMonth(), selectedDate) && (
-        <div className="bg-card rounded-xl border-2 border-border p-6">
+        <div className="isolate bg-white/30 dark:bg-white/10 backdrop-blur-2xl backdrop-saturate-[1.8] border border-white/70 rounded-xl p-6
+            shadow-[0_8px_32px_rgba(20,60,40,0.12),inset_0_1px_1px_rgba(255,255,255,0.9),inset_0_0_24px_rgba(255,255,255,0.3)]
+            relative overflow-hidden">
+          <span aria-hidden className="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-b from-white/50 via-white/5 to-transparent" />
           <h3 className="font-heading text-lg font-bold text-primary mb-4">
             Reservations for {new Date(currentDate.getFullYear(), currentDate.getMonth(), selectedDate).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
           </h3>
@@ -267,7 +270,7 @@ export const ReservationCalendarView = ({ labId = null }) => {
           <div className="space-y-4">
             {getReservationsForDate(selectedDate).length > 0 ? (
               getReservationsForDate(selectedDate).map((res, idx) => (
-                <div key={idx} className="border border-border rounded-lg p-4 hover:bg-muted/50 transition-colors">
+                <div key={idx} className="border border-white/70 bg-white/30 backdrop-blur-xl rounded-lg p-4 hover:bg-white/50 transition-colors">
                   <div className="flex justify-between items-start mb-2">
                     <div>
                       <p className="font-semibold text-foreground">{res.researcher_name}</p>

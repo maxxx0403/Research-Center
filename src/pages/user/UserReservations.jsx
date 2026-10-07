@@ -6,6 +6,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import StatusBadge from '@/components/StatusBadge';
 import RowActions from '@/components/RowActions';
+import RejectionNote from '@/components/RejectionNote';
 import BookingDateTimeInput from '@/components/BookingDateTimeInput';
 import {
   cancelReservation,
@@ -449,9 +450,10 @@ const UserReservations = () => {
                     <td className="px-4 py-3">
                       <StatusBadge status={group.status} />
                       {group.mixedStatus && <p className="text-[0.65rem] text-muted-foreground mt-1">Mixed — see breakdown</p>}
-                      {group.rejectionReasons.length > 0 && (
-                        <p className="text-[0.7rem] text-destructive mt-1 max-w-[160px]">{group.rejectionReasons.join('; ')}</p>
-                      )}
+                      <RejectionNote
+                        reasons={group.rejectionReasons}
+                        onOpen={() => setMessagingItem({ type: 'lab', id: primary.id, label: `Reservation #RC${String(primary.id).padStart(5, '0')}`, reason: group.rejectionReasons[0] })}
+                      />
                     </td>
                     <td className="px-4 py-3">
                       <RowActions
@@ -706,9 +708,10 @@ const UserReservations = () => {
                     <td className="px-4 py-3">
                       <StatusBadge status={group.status} />
                       {group.mixedStatus && <p className="text-[0.65rem] text-muted-foreground mt-1">Mixed — see items</p>}
-                      {group.rejectionReasons.length > 0 && (
-                        <p className="text-[0.7rem] text-destructive mt-1 max-w-[160px]">{group.rejectionReasons.join('; ')}</p>
-                      )}
+                      <RejectionNote
+                        reasons={group.rejectionReasons}
+                        onOpen={() => setMessagingItem({ type: 'equipment', id: primary.id, label: `Equipment request #EQ${String(primary.id).padStart(5, '0')}`, reason: group.rejectionReasons[0] })}
+                      />
                     </td>
                     <td className="px-4 py-3">
                       <RowActions

@@ -25,6 +25,43 @@ const PasswordRequirements = ({ password }) =>
   })}
   </ul>;
 
+const TermsModal = ({ onClose, onAgree }) =>
+<div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60" onClick={onClose} role="dialog" aria-modal="true" aria-label="Terms and Conditions">
+    <div className="bg-card text-foreground rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+      <div className="px-6 py-4 border-b border-border flex items-center justify-between">
+        <h2 className="font-heading text-base font-bold">Terms and Conditions</h2>
+        <button type="button" onClick={onClose} aria-label="Close" className="bg-transparent border-none text-muted-foreground hover:text-foreground cursor-pointer p-1"><X className="w-4 h-4" /></button>
+      </div>
+      <div className="px-6 py-4 overflow-y-auto text-sm space-y-3 leading-relaxed">
+        <p className="text-muted-foreground">By creating an account in the CvSU Research Center Laboratory Reservation System, you agree to the following:</p>
+        <div>
+          <h3 className="font-semibold mb-0.5">1. Account security</h3>
+          <p className="text-muted-foreground">You are responsible for keeping your password confidential and for all activity under your account. Do not share your login details. Report any unauthorized use to the Research Center right away.</p>
+        </div>
+        <div>
+          <h3 className="font-semibold mb-0.5">2. Accurate information</h3>
+          <p className="text-muted-foreground">The details you provide (name, email, college/unit, adviser, study title and members) must be true and up to date. Reservations made with false information may be cancelled.</p>
+        </div>
+        <div>
+          <h3 className="font-semibold mb-0.5">3. Reservations and use of facilities</h3>
+          <p className="text-muted-foreground">Reservations are subject to approval and to the schedule and availability of laboratories and equipment. You agree to follow laboratory rules, use equipment only for the approved purpose, and be responsible for any loss or damage caused during your use.</p>
+        </div>
+        <div>
+          <h3 className="font-semibold mb-0.5">4. Data privacy</h3>
+          <p className="text-muted-foreground">Your personal information is collected only to process reservations and manage your account, and is handled in line with the Data Privacy Act of 2012 (Republic Act No. 10173). It will not be shared with outside parties except as required by the University or by law.</p>
+        </div>
+        <div>
+          <h3 className="font-semibold mb-0.5">5. Changes and suspension</h3>
+          <p className="text-muted-foreground">The Research Center may update these terms, and may suspend accounts that misuse the system or break its rules.</p>
+        </div>
+      </div>
+      <div className="px-6 py-4 border-t border-border flex justify-end gap-2">
+        <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg text-sm font-semibold bg-muted text-foreground border border-border cursor-pointer hover:bg-border transition-colors">Close</button>
+        <button type="button" onClick={onAgree} className="px-4 py-2 rounded-lg text-sm font-semibold gradient-primary text-primary-foreground border-none cursor-pointer hover:opacity-90 transition-opacity">I Agree</button>
+      </div>
+    </div>
+  </div>;
+
 const Login = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -32,11 +69,13 @@ const Login = () => {
   const timedOut = searchParams.get('reason') === 'timeout';
   const { user, role, loading: authLoading } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState(timedOut ? 'You were signed out due to 10 minutes of inactivity. Please sign in again.' : '');
+  const [error, setError] = useState(timedOut ? 'You were logged out due to 10 minutes of inactivity. Please log in again.' : '');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
   const [isRegister, setIsRegister] = useState(false);
   const [signupPassword, setSignupPassword] = useState('');
+  const [agreedTerms, setAgreedTerms] = useState(false);
+  const [showTerms, setShowTerms] = useState(false);
 
   // Redirect if already logged in
   useEffect(() => {
@@ -54,6 +93,7 @@ const Login = () => {
     setError('');
     setSuccess('');
     setSignupPassword('');
+    setAgreedTerms(false);
   };
 
   const handleSignIn = async (e) => {
@@ -102,6 +142,7 @@ const Login = () => {
     if (password !== confirmPassword) { setError('Passwords do not match.'); return; }
     const fullName = sanitizeText(form.get('full_name'), { maxLength: 150 });
     if (!fullName) { setError('Full name is required.'); return; }
+    if (!agreedTerms) { setError('Please agree to the Terms and Conditions to create an account.'); return; }
 
     setLoading(true);
     const { data, error } = await supabase.auth.signUp({
@@ -121,16 +162,18 @@ const Login = () => {
       // auto sign the user in, so immediately sign them back out and show
       // the same "check your email" style message instead.
       await supabase.auth.signOut();
-      setSuccess('Account created! You can now sign in.');
+      setSuccess('Account created! You can now log in.');
       setIsRegister(false);
       e.currentTarget.reset();
       setSignupPassword('');
+      setAgreedTerms(false);
       setLoading(false);
     } else {
-      setSuccess('Account created! Please check your email to confirm your account before signing in.');
+      setSuccess('Account created! Please check your email to confirm your account before logging in.');
       setIsRegister(false);
       e.currentTarget.reset();
       setSignupPassword('');
+      setAgreedTerms(false);
       setLoading(false);
     }
   };
@@ -153,6 +196,8 @@ const Login = () => {
       <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.05)_1px,transparent_1px)] bg-[size:40px_40px] pointer-events-none" />
       <div className="absolute inset-[-50%] bg-[radial-gradient(circle_at_25%_30%,hsl(145_75%_45%/0.50),transparent_45%),radial-gradient(circle_at_75%_70%,hsl(100_70%_50%/0.35),transparent_45%)] animate-float z-0" />
 
+      {showTerms && <TermsModal onClose={() => setShowTerms(false)} onAgree={() => { setAgreedTerms(true); setShowTerms(false); }} />}
+
       <div className="relative z-10 w-full max-w-3xl flex flex-col items-center">
         {(error || success) &&
         <div className="w-full max-w-md mb-4">
@@ -172,10 +217,10 @@ const Login = () => {
         {/* ===== Desktop: classic sliding-overlay panel ===== */}
         <div className={`hidden lg:block relative w-full max-w-3xl min-h-[510px] rounded-3xl overflow-hidden animate-fade-up bg-white/55 backdrop-blur-2xl backdrop-saturate-[1.8] border border-white/60 shadow-[0_8px_32px_rgba(0,0,0,0.25),inset_0_1px_1px_rgba(255,255,255,0.9),inset_0_0_24px_rgba(255,255,255,0.25)]`}>
 
-          {/* Sign In form (left half) */}
+          {/* Log In form (left half) */}
           <div className={`absolute top-0 h-full w-1/2 flex items-center transition-all duration-700 ease-in-out ${isRegister ? 'translate-x-full opacity-0 pointer-events-none' : 'translate-x-0 opacity-100 z-20'}`}>
             <form onSubmit={handleSignIn} className="w-full px-10 py-8">
-              <h1 className="font-heading text-2xl font-bold text-primary mb-1">Sign In</h1>
+              <h1 className="font-heading text-2xl font-bold text-primary mb-1">Log In</h1>
               <p className="text-muted-foreground text-xs mb-5">Welcome back to CvSU Research Center</p>
               <div className="space-y-3.5">
                 <div className="relative">
@@ -195,7 +240,7 @@ const Login = () => {
               </button>
               <button type="submit" disabled={loading}
                 className="w-full py-3 gradient-primary text-primary-foreground border-none rounded-xl font-bold text-sm tracking-wide cursor-pointer hover:-translate-y-0.5 hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed">
-                {loading ? 'Signing in…' : 'Sign In'}
+                {loading ? 'Logging in…' : 'Log In'}
               </button>
             </form>
           </div>
@@ -229,15 +274,23 @@ const Login = () => {
                   <input name="confirm_password" type={showPassword ? 'text' : 'password'} required placeholder="Confirm Password" minLength={8} className={compactInput} />
                 </div>
               </div>
+              <label className="mt-3 flex items-start gap-2 text-xs text-muted-foreground cursor-pointer select-none">
+                <input type="checkbox" checked={agreedTerms} onChange={(e) => setAgreedTerms(e.target.checked)} required className="mt-0.5 w-3.5 h-3.5 accent-[hsl(var(--primary))] cursor-pointer flex-shrink-0" />
+                <span>
+                  I agree to the{' '}
+                  <button type="button" onClick={(e) => { e.preventDefault(); setShowTerms(true); }} className="bg-transparent border-none p-0 text-primary font-semibold underline cursor-pointer text-xs">Terms and Conditions</button>
+                  {' '}and Data Privacy notice
+                </span>
+              </label>
               <button type="submit" disabled={loading}
-                className="w-full py-3 gradient-primary text-primary-foreground border-none rounded-xl font-bold text-sm tracking-wide cursor-pointer hover:-translate-y-0.5 hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed mt-4">
+                className="w-full py-3 gradient-primary text-primary-foreground border-none rounded-xl font-bold text-sm tracking-wide cursor-pointer hover:-translate-y-0.5 hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed mt-3">
                 {loading ? 'Creating account…' : 'Sign Up'}
               </button>
               <div className="text-center mt-3 text-xs text-muted-foreground">
                 Already have an account?{' '}
                 <button type="button" onClick={() => switchMode(false)}
                   className="bg-transparent border-none text-primary font-semibold hover:underline cursor-pointer p-0">
-                  Sign in
+                  Log in
                 </button>
               </div>
             </form>
@@ -266,11 +319,11 @@ const Login = () => {
                 <img src={cvsuLogo} alt="CvSU Logo" className="w-14 h-14 mb-4 opacity-90" width={56} height={56} />
                 <h2 className="font-heading text-xl font-bold mb-3">Welcome Back!</h2>
                 <p className="text-primary-foreground/70 text-sm mb-6 leading-relaxed">
-                  Already have an account? Sign in to manage your laboratory and equipment reservations.
+                  Already have an account? Log in to manage your laboratory and equipment reservations.
                 </p>
                 <button type="button" onClick={() => switchMode(false)}
                   className="px-8 py-2.5 rounded-full border-2 border-primary-foreground/70 text-primary-foreground font-semibold text-sm bg-transparent cursor-pointer hover:bg-primary-foreground/10 transition-colors">
-                  Sign In
+                  Log In
                 </button>
               </div>
             </div>
@@ -282,7 +335,7 @@ const Login = () => {
           {isRegister ? 'Already have an account? ' : "Don't have an account? "}
           <button onClick={() => switchMode(!isRegister)}
             className="bg-transparent border-none text-accent font-semibold hover:underline cursor-pointer p-0">
-            {isRegister ? 'Sign in here' : 'Register here'}
+            {isRegister ? 'Log in here' : 'Register here'}
           </button>
         </div>
 
@@ -298,7 +351,7 @@ const Login = () => {
             <div className="flex bg-white/40 rounded-xl p-1 mb-6">
               <button type="button" onClick={() => switchMode(false)}
                 className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all cursor-pointer border-none ${!isRegister ? 'bg-white/85 text-primary shadow-sm' : 'bg-transparent text-muted-foreground hover:text-foreground'}`}>
-                Sign in
+                Log in
               </button>
               <button type="button" onClick={() => switchMode(true)}
                 className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all cursor-pointer border-none ${isRegister ? 'bg-white/85 text-primary shadow-sm' : 'bg-transparent text-muted-foreground hover:text-foreground'}`}>
@@ -327,7 +380,7 @@ const Login = () => {
                 </div>
                 <button type="submit" disabled={loading}
                 className="w-full py-3 gradient-primary text-primary-foreground border-none rounded-xl font-bold text-base cursor-pointer hover:-translate-y-0.5 hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed">
-                  {loading ? 'Signing in…' : 'Sign In'}
+                  {loading ? 'Logging in…' : 'Log In'}
                 </button>
                 <div className="text-center">
                   <button type="button" onClick={forgotPassword} className="bg-transparent border-none text-muted-foreground hover:text-foreground text-sm cursor-pointer underline">
@@ -371,6 +424,14 @@ const Login = () => {
                     <input name="confirm_password" type={showPassword ? 'text' : 'password'} required placeholder="Re-enter your password" minLength={8} className={inputClass} />
                   </div>
                 </div>
+                <label className=" flex items-start gap-2 text-xs text-muted-foreground cursor-pointer select-none">
+                <input type="checkbox" checked={agreedTerms} onChange={(e) => setAgreedTerms(e.target.checked)} required className="mt-0.5 w-3.5 h-3.5 accent-[hsl(var(--primary))] cursor-pointer flex-shrink-0" />
+                <span>
+                  I agree to the{' '}
+                  <button type="button" onClick={(e) => { e.preventDefault(); setShowTerms(true); }} className="bg-transparent border-none p-0 text-primary font-semibold underline cursor-pointer text-xs">Terms and Conditions</button>
+                  {' '}and Data Privacy notice
+                </span>
+              </label>
                 <button type="submit" disabled={loading}
                 className="w-full py-3 gradient-primary text-primary-foreground border-none rounded-xl font-bold text-base cursor-pointer hover:-translate-y-0.5 hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed">
                   {loading ? 'Creating account…' : 'Register'}
@@ -382,7 +443,7 @@ const Login = () => {
               {isRegister ? 'Already have an account? ' : "Don't have an account? "}
               <button onClick={() => switchMode(!isRegister)}
               className="bg-transparent border-none text-accent font-semibold hover:underline cursor-pointer p-0">
-                {isRegister ? 'Sign in' : 'Register'}
+                {isRegister ? 'Log in' : 'Register'}
               </button>
             </div>
           </div>

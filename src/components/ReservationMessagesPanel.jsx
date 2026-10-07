@@ -91,8 +91,8 @@ const ReservationMessagesPanel = ({ reservationType, reservationId, label, rejec
   const roleLabel = (r) => (r === 'admin' ? 'Admin' : r === 'staff' ? 'Staff' : '');
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-card rounded-xl shadow-lg w-full max-w-md flex flex-col max-h-[80vh]">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-card rounded-2xl shadow-lg w-full max-w-md flex flex-col max-h-[80vh] overflow-hidden">
         <div className="px-5 py-4 border-b border-border flex items-center justify-between flex-shrink-0">
           <div>
             <h3 className="font-heading text-sm font-bold text-foreground">{label}</h3>
@@ -104,12 +104,19 @@ const ReservationMessagesPanel = ({ reservationType, reservationId, label, rejec
         </div>
 
         {rejectionReason && (
-          <div className="mx-5 mt-4 flex gap-2 items-start bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2.5">
-            <AlertCircle className="w-4 h-4 text-destructive flex-shrink-0 mt-0.5" />
-            <div>
-              <p className="text-xs font-semibold text-destructive">Rejection reason</p>
-              <p className="text-xs text-foreground/80 mt-0.5">{rejectionReason}</p>
+          <div className="mx-5 mt-4 rounded-xl border border-destructive/20 border-l-[3px] border-l-destructive bg-destructive/5 p-3.5">
+            <div className="flex items-center gap-2">
+              <span className="w-7 h-7 rounded-full bg-destructive/15 flex items-center justify-center flex-shrink-0">
+                <AlertCircle className="w-4 h-4 text-destructive" />
+              </span>
+              <p className="text-[0.7rem] font-bold uppercase tracking-wide text-destructive">Reason for rejection</p>
             </div>
+            <p className="text-sm text-foreground/85 leading-relaxed mt-2 pl-9 break-words whitespace-pre-wrap">{rejectionReason}</p>
+            {role !== 'admin' && role !== 'staff' && (
+              <p className="text-xs text-muted-foreground mt-2 pl-9">
+                You can edit your request and resubmit it, or ask a question below.
+              </p>
+            )}
           </div>
         )}
 
@@ -127,7 +134,7 @@ const ReservationMessagesPanel = ({ reservationType, reservationId, label, rejec
               const displayName = mine ? (myName || m.sender_name) : m.sender_name;
               return (
                 <div key={m.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[80%] rounded-lg px-3 py-2 text-xs ${mine ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground'}`}>
+                  <div className={`max-w-[80%] px-3.5 py-2 text-xs rounded-2xl ${mine ? 'bg-primary text-primary-foreground rounded-br-md' : 'bg-muted text-foreground rounded-bl-md'}`}>
                     <p className={`font-semibold mb-0.5 ${mine ? 'text-primary-foreground/80' : 'text-muted-foreground'}`}>
                       {[displayName, roleLabel(m.sender_role)].filter(Boolean).join(' · ') || 'User'}
                     </p>
