@@ -8,13 +8,13 @@ import '@/glass.css';
 
 const menuItems = [
 { to: '/user/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+{ to: '/user/reservations', icon: CalendarCheck, label: 'My Reservations' },
 { to: '/user/reserve', icon: FlaskConical, label: 'Reserve Lab' },
 { to: '/user/reserve-equipment', icon: Package, label: 'Reserve Equipment' },
-{ to: '/user/reservations', icon: CalendarCheck, label: 'My Reservations' },
-{ to: '/user/feedback', icon: MessageSquare, label: 'Feedback' },
 { to: '/user/forms', icon: FileText, label: 'Forms and Papers' },
-{ to: '/user/help', icon: LifeBuoy, label: 'Help & Support' },
-{ to: '/user/report-problem', icon: Flag, label: 'Report a Problem' }];
+{ to: '/user/feedback', icon: MessageSquare, label: 'Feedback' },
+{ to: '/user/report-problem', icon: Flag, label: 'Report a Problem' },
+{ to: '/user/help', icon: LifeBuoy, label: 'Help & Support' }];
 
 
 const UserLayout = () => {

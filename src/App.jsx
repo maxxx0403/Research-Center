@@ -27,6 +27,7 @@ import StaffReservations from "./pages/staff/StaffReservations";
 import StaffDashboard from "./pages/staff/StaffDashboard";
 import StaffActivityLogs from "./pages/staff/StaffActivityLogs";
 import StaffReports from "./pages/staff/StaffReports";
+import StaffFeedback from "./pages/staff/StaffFeedback";
 import StaffSettings from "./pages/staff/StaffSettings";
 import StaffUnavailability from "./pages/staff/StaffUnavailability";
 import UserDashboard from "./pages/user/UserDashboard";
@@ -81,6 +82,7 @@ const App = () =>
               <Route path="reservations" element={<StaffReservations />} />
               <Route path="activity-logs" element={<StaffActivityLogs />} />
               <Route path="reports" element={<StaffReports />} />
+              <Route path="feedbacks" element={<StaffFeedback />} />
               <Route path="unavailability" element={<StaffUnavailability />} />
               <Route path="settings" element={<StaffSettings />} />
             </Route>

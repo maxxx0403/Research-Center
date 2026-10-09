@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate, Outlet } from 'react-router-dom';
-import { LayoutDashboard, CalendarCheck, FlaskConical, Package, BarChart3, Settings, LogOut, ChevronLeft, ChevronDown, CalendarOff, History } from 'lucide-react';
+import { LayoutDashboard, CalendarCheck, FlaskConical, Package, BarChart3, Settings, LogOut, ChevronLeft, ChevronDown, CalendarOff, History, MessageSquare } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import NotificationBell from '@/components/NotificationBell';
@@ -12,6 +12,7 @@ const menuItems = [
 { to: '/staff/equipment', icon: Package, label: 'Equipment' },
 { to: '/staff/reservations', icon: CalendarCheck, label: 'Reservations' },
 { to: '/staff/reports', icon: BarChart3, label: 'Reports' },
+{ to: '/staff/feedbacks', icon: MessageSquare, label: 'Feedback' },
 { to: '/staff/activity-logs', icon: History, label: 'Activity Log' },
 { to: '/staff/unavailability', icon: CalendarOff, label: 'My Unavailable Dates' }];
 

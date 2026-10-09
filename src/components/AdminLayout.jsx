@@ -11,10 +11,10 @@ const menuItems = [
 { to: '/admin/reservations', icon: CalendarCheck, label: 'Reservations' },
 { to: '/admin/laboratories', icon: FlaskConical, label: 'Laboratories' },
 { to: '/admin/equipment', icon: Package, label: 'Equipment' },
+{ to: '/admin/reports', icon: BarChart3, label: 'Reports' },
 { to: '/admin/submissions', icon: FileText, label: 'Submissions' },
 { to: '/admin/feedbacks', icon: MessageSquare, label: 'Feedback' },
 { to: '/admin/problem-reports', icon: Flag, label: 'Problem Reports' },
-{ to: '/admin/reports', icon: BarChart3, label: 'Reports' },
 { to: '/admin/activity-logs', icon: ClipboardList, label: 'Activity Logs' }];
 
 const AdminLayout = () => {
