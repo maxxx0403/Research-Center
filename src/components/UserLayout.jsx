@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import NotificationBell from '@/components/NotificationBell';
 import cvsuLogo from '@/assets/cvsu-logo.png';
-import '@/glass.css';
+import '@/glass-fix.css';
 
 const menuItems = [
 { to: '/user/dashboard', icon: LayoutDashboard, label: 'Dashboard' },

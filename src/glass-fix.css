@@ -1,0 +1,100 @@
+/* ------------------------------------------------------------------
+   Glass look for the user portal.
+   Everything inside an element with the `glass-ui` class that uses the
+   normal card surface (`bg-card`) becomes iOS-style frosted glass, so
+   existing pages (tables, forms, stat cards) don't need to be edited.
+   Radix popovers (3-dots menus) render in a portal outside .glass-ui and
+   keep their own styling.
+------------------------------------------------------------------- */
+
+/* Colour rules, kept simple and the same everywhere:
+   - containers (cards, tables, panels, modals, calendar) -> frosted white border
+   - form fields (input / select / textarea)               -> dark green border
+   Nothing else is coloured green. */
+.glass-ui {
+  --glass-border: rgb(255 255 255 / 0.7);
+  --field-border: #008000;
+}
+
+/* Cards, tables, panels */
+.glass-ui .bg-card {
+  background-color: rgb(255 255 255 / 0.38);
+  -webkit-backdrop-filter: blur(24px) saturate(1.8);
+  backdrop-filter: blur(24px) saturate(1.8);
+  border-color: var(--glass-border);
+  box-shadow:
+    0 8px 32px rgba(20, 60, 40, 0.12),
+    inset 0 1px 1px rgba(255, 255, 255, 0.9),
+    inset 0 0 24px rgba(255, 255, 255, 0.25);
+}
+
+/* Glass inside glass: keep it light (no stacked blur / shadows) */
+.glass-ui .bg-card .bg-card {
+  background-color: rgb(255 255 255 / 0.35);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: none;
+}
+
+/* Form fields and small buttons: translucent white, no heavy shadow */
+.glass-ui input.bg-card,
+.glass-ui select.bg-card,
+.glass-ui textarea.bg-card,
+.glass-ui button.bg-card {
+  background-color: rgb(255 255 255 / 0.55);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: none;
+  border-color: var(--field-border);
+}
+/* focus: same green family, a little brighter + soft ring so it is still visible */
+.glass-ui input.bg-card:focus,
+.glass-ui select.bg-card:focus,
+.glass-ui textarea.bg-card:focus {
+  border-color: hsl(145 63% 34%);
+  box-shadow: 0 0 0 3px hsl(145 63% 34% / 0.2);
+}
+
+/* Floating panels (dropdowns, notification list): more opaque so text stays readable */
+.glass-ui .absolute.bg-card {
+  background-color: rgb(255 255 255 / 0.88);
+}
+
+/* Any other form field (the ones without bg-card, e.g. disabled / read-only
+   fields) gets the same frosted look. Checkboxes, radios, ranges and file
+   pickers are left alone. */
+.glass-ui :is(input, select, textarea):not(.bg-card):not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]) {
+  background-color: rgb(255 255 255 / 0.55);
+}
+.glass-ui :is(input, select, textarea):not(.bg-card):not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]):not([class*="border-destructive"]) {
+  border-color: var(--field-border);
+}
+/* fields that use a translucent-white border class (e.g. the calendar lab select) */
+.glass-ui :is(input, select, textarea)[class*="border-white"]:not(:hover) {
+  border-color: var(--field-border);
+}
+.glass-ui :is(input, select, textarea):disabled {
+  opacity: 0.7;
+}
+
+/* Modals: same frosted glass, a bit more opaque so the text stays easy to read
+   over the dark overlay. */
+.glass-ui .fixed .bg-card {
+  background-color: rgb(255 255 255 / 0.82);
+  -webkit-backdrop-filter: blur(24px) saturate(1.8);
+  backdrop-filter: blur(24px) saturate(1.8);
+  border-color: var(--glass-border);
+  box-shadow:
+    0 20px 50px rgba(0, 0, 0, 0.25),
+    inset 0 1px 1px rgba(255, 255, 255, 0.9);
+}
+.glass-ui .fixed .bg-card input.bg-card,
+.glass-ui .fixed .bg-card select.bg-card,
+.glass-ui .fixed .bg-card textarea.bg-card,
+.glass-ui .fixed .bg-card button.bg-card {
+  background-color: rgb(255 255 255 / 0.6);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  border-color: var(--field-border);
+  box-shadow: none;
+}
