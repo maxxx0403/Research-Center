@@ -103,12 +103,12 @@ const UserReservations = () => {
     const [labRes, eqRes] = await Promise.all([
       supabase
         .from('reservations')
-        .select('*, laboratories(lab_name, lab_code), reservation_equipment(id, quantity_reserved, equipment(id, name, brand, model))')
+        .select('*, laboratories(lab_name, lab_code, allow_non_official_hours), reservation_equipment(id, quantity_reserved, equipment(id, name, brand, model))')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false }),
       supabase
         .from('equipment_reservations')
-        .select('*, equipment(id, name, brand, model, laboratories(lab_name, lab_code))')
+        .select('*, equipment(id, name, brand, model, allow_non_official_hours, laboratories(lab_name, lab_code))')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false }),
     ]);
@@ -219,8 +219,11 @@ const UserReservations = () => {
     setSavingEq(true);
     try {
       const { wasRejected, originalStart, ...fields } = editEqData;
+      const eqItems = group.items?.length ? group.items : [group.primary];
       const dtError = validateBookingDateTime(fields.start_datetime, fields.end_datetime, {
         skipAdvanceCheck: fields.start_datetime === originalStart,
+        allowNonOfficial: eqItems.every((it) => it.equipment?.allow_non_official_hours),
+        subject: 'This equipment',
       });
       if (dtError) {
         alert(dtError);
@@ -297,8 +300,10 @@ const UserReservations = () => {
     setSaving(true);
     try {
       const { wasRejected, originalStart, ...fields } = editData;
+      const editedRes = reservations.find((r) => r.id === id);
       const dtError = validateBookingDateTime(fields.start_datetime, fields.end_datetime, {
         skipAdvanceCheck: fields.start_datetime === originalStart,
+        allowNonOfficial: !!editedRes?.laboratories?.allow_non_official_hours,
       });
       if (dtError) {
         alert(dtError);

@@ -58,6 +58,23 @@ const parseNaive = (value) => {
 
 export const isSundayInput = (value) => parseNaive(value)?.dow === 0;
 
+// Friday (5), Saturday (6) and Sunday (0) are "non-official" days. They can only be
+// booked when the laboratory / equipment has "allow non-official hours" switched ON.
+const NON_OFFICIAL_DAYS = [0, 5, 6];
+
+// True if any calendar day from start to end (inclusive) is a Friday, Saturday or Sunday.
+export const spansNonOfficialDay = (start, end) => {
+  const s = parseNaive(start);
+  if (!s) return false;
+  const e = parseNaive(end || start);
+  const from = Date.UTC(s.y, s.mo - 1, s.d);
+  const to = e ? Math.max(Date.UTC(e.y, e.mo - 1, e.d), from) : from;
+  for (let t = from, n = 0; t <= to && n < 400; t += 86400000, n += 1) {
+    if (NON_OFFICIAL_DAYS.includes(new Date(t).getUTCDay())) return true;
+  }
+  return false;
+};
+
 export const isOutsideHoursInput = (value) => {
   const p = parseNaive(value);
   if (!p) return false;
@@ -97,12 +114,12 @@ export const earliestBookableLabel = () =>
 // One validator for every reservation form (lab, equipment, and editing an existing one).
 // `skipAdvanceCheck` is used when editing and the start date was not changed,
 // so users can still edit e.g. the purpose of a reservation that is already inside the 1-week window.
-export const validateBookingDateTime = (start, end, { skipAdvanceCheck = false } = {}) => {
+export const validateBookingDateTime = (start, end, { skipAdvanceCheck = false, allowNonOfficial = false, subject = 'This laboratory' } = {}) => {
   if (!start || !end) return 'Please fill in both start and end date/time.';
   if (!skipAdvanceCheck && isTooSoonInput(start))
     return `Reservations must be made at least ${MIN_ADVANCE_DAYS} days (1 week) in advance. Please choose a later date.`;
-  if (isSundayInput(start) || isSundayInput(end))
-    return 'Closed on Sundays. Please select Monday to Saturday only.';
+  if (!allowNonOfficial && spansNonOfficialDay(start, end))
+    return `Friday to Sunday are non-official hours. ${subject} is not accepting reservations on those days. Please select Monday to Thursday.`;
   if (isOutsideHoursInput(start) || isOutsideHoursInput(end))
     return 'Operating hours are 7:00 AM to 6:00 PM only.';
   if (new Date(manilaInputToISO(end)) <= new Date(manilaInputToISO(start)))

@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { Eye, EyeOff, Lock, Mail, AlertCircle, User, Check, X } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import cvsuLogo from '@/assets/cvsu-logo.png';
 import { useAuth } from '@/contexts/AuthContext';
+import { markActivity } from '@/lib/sessionActivity';
 import { validateEmail, validatePassword, sanitizeText, checkLoginThrottle, recordLoginAttempt } from '@/lib/validation';
 
 const PASSWORD_RULES = [
@@ -67,7 +68,7 @@ const Login = () => {
   const [searchParams] = useSearchParams();
   const redirectTo = searchParams.get('redirect') || '';
   const timedOut = searchParams.get('reason') === 'timeout';
-  const { user, role, loading: authLoading } = useAuth();
+  const { user, role, loading: authLoading, signOut } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState(timedOut ? 'You were logged out due to 10 minutes of inactivity. Please log in again.' : '');
   const [success, setSuccess] = useState('');
@@ -77,9 +78,21 @@ const Login = () => {
   const [agreedTerms, setAgreedTerms] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
 
-  // Redirect if already logged in
+  // Always require a fresh login. If someone lands here with an old session
+  // still around (e.g. they left earlier without logging out), end it first
+  // instead of sending them straight into the account.
+  const signingInRef = useRef(false);
+  const checkedRef = useRef(false);
   useEffect(() => {
-    if (!authLoading && user && role) {
+    if (authLoading || checkedRef.current) return;
+    checkedRef.current = true;
+    if (user && !signingInRef.current) signOut();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, user]);
+
+  // Redirect only right after a login made on this page
+  useEffect(() => {
+    if (!authLoading && user && role && signingInRef.current) {
       if (redirectTo) {
         navigate(redirectTo);
       } else {
@@ -115,11 +128,15 @@ const Login = () => {
     }
 
     setLoading(true);
+    signingInRef.current = true;
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     recordLoginAttempt(!error);
     if (error) {
+      signingInRef.current = false;
       setError(error.message);
       setLoading(false);
+    } else {
+      markActivity();
     }
     // Role-based redirect will happen via the useEffect above
   };

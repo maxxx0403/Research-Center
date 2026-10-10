@@ -10,12 +10,12 @@ import {
   checkEquipmentAvailability,
 } from '@/lib/reservationUtils';
 import { validateReservationFields, sanitizeText } from '@/lib/validation';
-import { earliestBookableInput, earliestBookableLabel, manilaInputToISO, validateBookingDateTime, MIN_ADVANCE_DAYS } from '@/lib/timezone';
+import { earliestBookableInput, earliestBookableLabel, manilaInputToISO, validateBookingDateTime, spansNonOfficialDay, MIN_ADVANCE_DAYS } from '@/lib/timezone';
 
 // `min` for datetime-local inputs: today + 7 days (Philippine Time).
 const getMinDatetimeLocal = () => earliestBookableInput();
 
-const validateDateTime = (start, end) => validateBookingDateTime(start, end);
+const validateDateTime = (start, end, allowNonOfficial = false) => validateBookingDateTime(start, end, { allowNonOfficial });
 
 const inputClass =
   'w-full px-4 py-3 border-2 border-border rounded-xl text-base bg-card text-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10';
@@ -191,8 +191,9 @@ const UserReserve = () => {
     for (let i = 0; i < selectedLabs.length; i++) {
       const entry = selectedLabs[i];
       if (!entry.labId || entry.labId === 0) continue;
-      const labName = labs.find((l) => l.id === entry.labId)?.lab_name || `Lab #${i + 1}`;
-      const dtError = validateDateTime(entry.startDatetime, entry.endDatetime);
+      const entryLab = labs.find((l) => l.id === entry.labId);
+      const labName = entryLab?.lab_name || `Lab #${i + 1}`;
+      const dtError = validateDateTime(entry.startDatetime, entry.endDatetime, !!entryLab?.allow_non_official_hours);
       if (dtError) {
         triggerError(`${labName}: ${dtError}`);
         return;
@@ -222,6 +223,10 @@ const UserReserve = () => {
       const assignedLab = validLabs[eq.labIdx];
       if (!assignedLab) {
         triggerError(`Please select which lab will use "${eqName}".`);
+        return;
+      }
+      if (!eqData?.allow_non_official_hours && spansNonOfficialDay(assignedLab.startDatetime, assignedLab.endDatetime)) {
+        triggerError(`"${eqName}" is not available on Fridays to Sundays (non-official hours). Please choose another equipment or a Monday to Thursday schedule.`);
         return;
       }
       const { hasConflict: eqConflict } = await checkEquipmentAvailability(

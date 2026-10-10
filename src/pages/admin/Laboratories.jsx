@@ -4,8 +4,9 @@ import RowActions from '@/components/RowActions';
 import StatusBadge from '@/components/StatusBadge';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import NonOfficialToggle, { NonOfficialBulk, saveNonOfficialHours } from '@/components/NonOfficialToggle';
 
-const EMPTY_LAB = { lab_name: '', lab_code: '', floor: '', description: '', max_capacity: '', equipment_list: '', status: 'available' };
+const EMPTY_LAB = { lab_name: '', lab_code: '', floor: '', description: '', max_capacity: '', equipment_list: '' };
 const inputCls = "w-full px-3 py-2.5 border border-border rounded-lg text-sm bg-card text-foreground focus:outline-none focus:border-primary";
 
 const Laboratories = () => {
@@ -42,7 +43,6 @@ const Laboratories = () => {
       description: lab.description || '',
       max_capacity: lab.max_capacity ? String(lab.max_capacity) : '',
       equipment_list: lab.equipment_list || '',
-      status: lab.status,
     });
     setShowModal(true);
   };
@@ -58,7 +58,6 @@ const Laboratories = () => {
       description: form.description.trim() || null,
       max_capacity: form.max_capacity ? Number(form.max_capacity) : 0,
       equipment_list: form.equipment_list.trim() || null,
-      status: form.status,
     };
 
     if (editTarget) {
@@ -68,7 +67,7 @@ const Laboratories = () => {
       setLabs((prev) => prev.map((l) => l.id === editTarget.id ? data : l));
       toast.success(`${data.lab_name} updated successfully!`);
     } else {
-      const { data, error } = await supabase.from('laboratories').insert({ ...payload, current_occupancy: 0 }).select().single();
+      const { data, error } = await supabase.from('laboratories').insert({ ...payload, current_occupancy: 0, status: 'available' }).select().single();
       setSaving(false);
       if (error) { toast.error('Failed to add: ' + error.message); return; }
       setLabs((prev) => [...prev, data]);
@@ -109,6 +108,23 @@ const Laboratories = () => {
     setLabs((prev) => prev.map((l) => l.id === lab.id ? { ...l, ...updates } : l));
   };
 
+  // Friday - Sunday bookings ON/OFF
+  const toggleNonOfficial = async (lab, value) => {
+    const error = await saveNonOfficialHours('laboratories', [lab.id], value);
+    if (error) { toast.error('Failed to update: ' + error.message); return; }
+    setLabs((prev) => prev.map((l) => (l.id === lab.id ? { ...l, allow_non_official_hours: value } : l)));
+    toast.success(`${lab.lab_name}: Friday–Sunday bookings ${value ? 'ON' : 'OFF'}.`);
+  };
+
+  const setAllNonOfficial = async (value) => {
+    const ids = filtered.map((l) => l.id);
+    if (!ids.length) return;
+    const error = await saveNonOfficialHours('laboratories', ids, value);
+    if (error) { toast.error('Failed to update: ' + error.message); return; }
+    setLabs((prev) => prev.map((l) => (ids.includes(l.id) ? { ...l, allow_non_official_hours: value } : l)));
+    toast.success(`Friday–Sunday bookings turned ${value ? 'ON' : 'OFF'} for ${ids.length} laborator${ids.length === 1 ? 'y' : 'ies'}.`);
+  };
+
   return (
     <>
       {/* Search + Add */}
@@ -133,7 +149,10 @@ const Laboratories = () => {
             <Plus className="w-4 h-4" /> Add Laboratory
           </button>
         </div>
-        <p className="text-xs text-muted-foreground mt-2">{filtered.length} laborator{filtered.length === 1 ? 'y' : 'ies'}</p>
+        <div className="flex flex-wrap items-center justify-between gap-2 mt-2">
+          <p className="text-xs text-muted-foreground">{filtered.length} laborator{filtered.length === 1 ? 'y' : 'ies'}</p>
+          <NonOfficialBulk count={filtered.length} disabled={filtered.length === 0} onAll={setAllNonOfficial} />
+        </div>
       </div>
 
       <div className="grid grid-cols-[repeat(auto-fill,minmax(420px,1fr))] gap-5">
@@ -209,6 +228,13 @@ const Laboratories = () => {
                     </button>
                   </div>
                 </div>
+                <div className="flex items-center justify-between gap-3 text-xs">
+                  <div>
+                    <div className="font-semibold text-foreground">Friday – Sunday bookings</div>
+                    <div className="text-muted-foreground">Non-official hours (7:00 AM – 6:00 PM)</div>
+                  </div>
+                  <NonOfficialToggle checked={!!lab.allow_non_official_hours} onChange={(v) => toggleNonOfficial(lab, v)} />
+                </div>
                 {lab.equipment_list && (
                   <div className="text-xs text-muted-foreground"><strong className="text-foreground">Equipment:</strong> {lab.equipment_list}</div>
                 )}
@@ -245,18 +271,9 @@ const Laboratories = () => {
                 <label className="block text-xs font-semibold text-foreground mb-1">Description</label>
                 <textarea name="description" value={form.description} onChange={handleChange} placeholder="Brief description of the laboratory…" rows={3} className={inputCls} />
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-foreground mb-1">Max Capacity</label>
-                  <input name="max_capacity" type="number" min="0" value={form.max_capacity} onChange={handleChange} placeholder="e.g. 20" className={inputCls} />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-foreground mb-1">Status</label>
-                  <select name="status" value={form.status} onChange={handleChange} className={inputCls}>
-                    <option value="available">Available</option>
-                    <option value="maintenance">Under Maintenance</option>
-                  </select>
-                </div>
+              <div>
+                <label className="block text-xs font-semibold text-foreground mb-1">Max Capacity</label>
+                <input name="max_capacity" type="number" min="0" value={form.max_capacity} onChange={handleChange} placeholder="e.g. 20" className={inputCls} />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-foreground mb-1">Equipment List</label>

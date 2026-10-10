@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { FileText, Eye, Trash2, Search, Calendar, Clock, Plus, ChevronLeft, ChevronRight, AlertCircle, RefreshCw } from 'lucide-react';
+import { FileText, Trash2, Search, Calendar, Clock, Plus, ChevronLeft, ChevronRight, AlertCircle, RefreshCw } from 'lucide-react';
 import RowActions from '@/components/RowActions';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -48,7 +48,6 @@ const SubmissionRow = ({ s, onStatusChange, onDelete }) => {
       <td className="px-4 py-3">
         <RowActions
           items={[
-            { label: 'View file', icon: Eye, href: url, hidden: !url },
             { label: 'Change status', icon: RefreshCw, value: s.status, options: [{ value: 'submitted', label: 'Submitted' }, { value: 'reviewed', label: 'Reviewed' }, { value: 'approved', label: 'Approved' }, { value: 'rejected', label: 'Rejected' }], onChange: (v) => onStatusChange(s.id, v) },
             { separator: true },
             { label: 'Delete', icon: Trash2, destructive: true, onClick: () => onDelete(s) },
@@ -89,7 +88,6 @@ const SubmissionCard = ({ s, onStatusChange, onDelete }) => {
         )}
         <RowActions
           items={[
-            { label: 'View file', icon: Eye, href: url, hidden: !url },
             { label: 'Change status', icon: RefreshCw, value: s.status, options: [{ value: 'submitted', label: 'Submitted' }, { value: 'reviewed', label: 'Reviewed' }, { value: 'approved', label: 'Approved' }, { value: 'rejected', label: 'Rejected' }], onChange: (v) => onStatusChange(s.id, v) },
             { separator: true },
             { label: 'Delete', icon: Trash2, destructive: true, onClick: () => onDelete(s) },

@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Search, Plus, X, Pencil, Trash2, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Search, Plus, X, Pencil, Trash2, AlertTriangle, RefreshCw, CalendarCheck } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { NonOfficialBulk, saveNonOfficialHours } from '@/components/NonOfficialToggle';
 import { notifyEquipmentRemoved } from '@/lib/notifications';
 import RowActions from '@/components/RowActions';
 
@@ -137,6 +138,23 @@ const AdminEquipment = () => {
     setDeleteTarget(null);
   };
 
+  // Friday - Sunday bookings ON/OFF
+  const toggleNonOfficial = async (item, value) => {
+    const error = await saveNonOfficialHours('equipment', [item.id], value);
+    if (error) { toast.error('Failed to update: ' + error.message); return; }
+    setEquipment((prev) => prev.map((e) => (e.id === item.id ? { ...e, allow_non_official_hours: value } : e)));
+    toast.success(`${item.name}: Friday–Sunday bookings ${value ? 'ON' : 'OFF'}.`);
+  };
+
+  const setAllNonOfficial = async (value) => {
+    const ids = filtered.map((e) => e.id);
+    if (!ids.length) return;
+    const error = await saveNonOfficialHours('equipment', ids, value);
+    if (error) { toast.error('Failed to update: ' + error.message); return; }
+    setEquipment((prev) => prev.map((e) => (ids.includes(e.id) ? { ...e, allow_non_official_hours: value } : e)));
+    toast.success(`Friday–Sunday bookings turned ${value ? 'ON' : 'OFF'} for ${ids.length} equipment item${ids.length === 1 ? '' : 's'}.`);
+  };
+
   return (
     <div className="space-y-5">
       <div className="bg-card rounded-xl shadow-card p-4">
@@ -155,9 +173,13 @@ const AdminEquipment = () => {
               {labs.map((l) => <option key={l.id} value={l.id}>{l.lab_code} - {l.lab_name}</option>)}
             </select>
           </div>
-          <button onClick={openAdd} className="gradient-primary text-primary-foreground px-4 py-2 rounded-xl font-semibold text-sm border-none cursor-pointer hover:-translate-y-0.5 hover:shadow-lg transition-all inline-flex items-center gap-2 whitespace-nowrap">
-            <Plus className="w-4 h-4" /> Add Equipment
-          </button>
+          {/* second row, pushed to the right (under the Laboratory dropdown) */}
+          <div className="w-full flex flex-wrap items-center justify-end gap-3">
+            <NonOfficialBulk count={filtered.length} disabled={filtered.length === 0} onAll={setAllNonOfficial} />
+            <button onClick={openAdd} className="gradient-primary text-primary-foreground px-4 py-2 rounded-xl font-semibold text-sm border-none cursor-pointer hover:-translate-y-0.5 hover:shadow-lg transition-all inline-flex items-center gap-2 whitespace-nowrap">
+              <Plus className="w-4 h-4" /> Add Equipment
+            </button>
+          </div>
         </div>
       </div>
 
@@ -194,6 +216,13 @@ const AdminEquipment = () => {
                       <RowActions
                         items={[
                           { label: 'Edit', icon: Pencil, onClick: () => openEdit(e) },
+                          {
+                            label: 'Fri–Sun bookings',
+                            icon: CalendarCheck,
+                            value: e.allow_non_official_hours ? 'on' : 'off',
+                            options: [{ value: 'on', label: 'ON' }, { value: 'off', label: 'OFF' }],
+                            onChange: (v) => toggleNonOfficial(e, v === 'on'),
+                          },
                           {
                             label: 'Change status',
                             icon: RefreshCw,

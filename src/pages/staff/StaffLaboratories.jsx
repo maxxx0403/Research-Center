@@ -5,6 +5,7 @@ import StatusBadge from '@/components/StatusBadge';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
+import NonOfficialToggle, { NonOfficialBulk, saveNonOfficialHours } from '@/components/NonOfficialToggle';
 
 const StaffLaboratories = () => {
   const { assignedRoomIds } = useAuth();
@@ -55,6 +56,23 @@ const StaffLaboratories = () => {
   l.lab_code.toLowerCase().includes(search.toLowerCase())
   );
 
+  // Friday - Sunday bookings ON/OFF
+  const toggleNonOfficial = async (lab, value) => {
+    const error = await saveNonOfficialHours('laboratories', [lab.id], value);
+    if (error) { toast.error('Failed to update: ' + error.message); return; }
+    setLabs((prev) => prev.map((l) => (l.id === lab.id ? { ...l, allow_non_official_hours: value } : l)));
+    toast.success(`${lab.lab_name}: Friday–Sunday bookings ${value ? 'ON' : 'OFF'}.`);
+  };
+
+  const setAllNonOfficial = async (value) => {
+    const ids = filtered.map((l) => l.id);
+    if (!ids.length) return;
+    const error = await saveNonOfficialHours('laboratories', ids, value);
+    if (error) { toast.error('Failed to update: ' + error.message); return; }
+    setLabs((prev) => prev.map((l) => (ids.includes(l.id) ? { ...l, allow_non_official_hours: value } : l)));
+    toast.success(`Friday–Sunday bookings turned ${value ? 'ON' : 'OFF'} for ${ids.length} laborator${ids.length === 1 ? 'y' : 'ies'}.`);
+  };
+
   return (
     <div className="space-y-5">
       {/* Search */}
@@ -73,7 +91,10 @@ const StaffLaboratories = () => {
             </div>
           </div>
         </div>
-        <p className="text-xs text-muted-foreground mt-2">{filtered.length} laborator{filtered.length === 1 ? 'y' : 'ies'}</p>
+        <div className="flex flex-wrap items-center justify-between gap-2 mt-2">
+          <p className="text-xs text-muted-foreground">{filtered.length} laborator{filtered.length === 1 ? 'y' : 'ies'}</p>
+          <NonOfficialBulk count={filtered.length} disabled={filtered.length === 0} onAll={setAllNonOfficial} />
+        </div>
       </div>
 
       {loading ?
@@ -142,6 +163,13 @@ const StaffLaboratories = () => {
                       <Plus className="w-3.5 h-3.5" />
                     </button>
                   </div>
+                </div>
+                <div className="flex items-center justify-between gap-3 text-xs">
+                  <div>
+                    <div className="font-semibold text-foreground">Friday – Sunday bookings</div>
+                    <div className="text-muted-foreground">Non-official hours (7:00 AM – 6:00 PM)</div>
+                  </div>
+                  <NonOfficialToggle checked={!!lab.allow_non_official_hours} onChange={(v) => toggleNonOfficial(lab, v)} />
                 </div>
                 {lab.equipment_list && (
                   <div className="text-xs text-muted-foreground"><strong className="text-foreground">Equipment:</strong> {lab.equipment_list}</div>

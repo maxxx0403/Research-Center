@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Search, Plus, X, Pencil, RefreshCw } from 'lucide-react';
+import { Search, Plus, X, Pencil, RefreshCw, CalendarCheck } from 'lucide-react';
 import RowActions from '@/components/RowActions';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
+import { NonOfficialBulk, saveNonOfficialHours } from '@/components/NonOfficialToggle';
 
 const EMPTY_EQ = { name: '', brand: '', model: '', laboratory_id: '', quantity: '1' };
 const inputCls = "w-full px-3 py-2.5 border border-border rounded-lg text-sm bg-card text-foreground focus:outline-none focus:border-primary";
@@ -95,6 +96,23 @@ const StaffEquipment = () => {
     loadData();
   };
 
+  // Friday - Sunday bookings ON/OFF
+  const toggleNonOfficial = async (item, value) => {
+    const error = await saveNonOfficialHours('equipment', [item.id], value);
+    if (error) { toast.error('Failed to update: ' + error.message); return; }
+    setEquipment((prev) => prev.map((e) => (e.id === item.id ? { ...e, allow_non_official_hours: value } : e)));
+    toast.success(`${item.name}: Friday–Sunday bookings ${value ? 'ON' : 'OFF'}.`);
+  };
+
+  const setAllNonOfficial = async (value) => {
+    const ids = filtered.map((e) => e.id);
+    if (!ids.length) return;
+    const error = await saveNonOfficialHours('equipment', ids, value);
+    if (error) { toast.error('Failed to update: ' + error.message); return; }
+    setEquipment((prev) => prev.map((e) => (ids.includes(e.id) ? { ...e, allow_non_official_hours: value } : e)));
+    toast.success(`Friday–Sunday bookings turned ${value ? 'ON' : 'OFF'} for ${ids.length} equipment item${ids.length === 1 ? '' : 's'}.`);
+  };
+
   return (
     <div className="space-y-5">
       <div className="bg-card rounded-xl shadow-card p-4">
@@ -106,6 +124,7 @@ const StaffEquipment = () => {
               <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Equipment name or brand…" className="w-full pl-10 pr-4 py-2 border border-border rounded-lg text-sm bg-card text-foreground focus:outline-none focus:border-primary" />
             </div>
           </div>
+          <NonOfficialBulk count={filtered.length} disabled={filtered.length === 0} onAll={setAllNonOfficial} />
           <button onClick={openAdd} className="gradient-primary text-primary-foreground px-4 py-2 rounded-xl font-semibold text-sm border-none cursor-pointer hover:-translate-y-0.5 hover:shadow-lg transition-all inline-flex items-center gap-2 whitespace-nowrap">
             <Plus className="w-4 h-4" /> Add Equipment
           </button>
@@ -123,7 +142,7 @@ const StaffEquipment = () => {
               <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Name</th>
               <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Laboratory</th>
               <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Qty Available</th>
-              <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Actions</th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -143,6 +162,13 @@ const StaffEquipment = () => {
                   <RowActions
                     items={[
                       { label: 'Edit', icon: Pencil, onClick: () => openEdit(e) },
+                      {
+                        label: 'Fri–Sun bookings',
+                        icon: CalendarCheck,
+                        value: e.allow_non_official_hours ? 'on' : 'off',
+                        options: [{ value: 'on', label: 'ON' }, { value: 'off', label: 'OFF' }],
+                        onChange: (v) => toggleNonOfficial(e, v === 'on'),
+                      },
                       {
                         label: 'Change status',
                         icon: RefreshCw,

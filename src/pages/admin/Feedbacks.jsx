@@ -42,15 +42,20 @@ const Feedbacks = () => {
     setDeleting(null);
   };
 
-  const avg = feedbacks.length > 0 ? (feedbacks.reduce((a, f) => a + f.rating, 0) / feedbacks.length).toFixed(1) : 0;
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
         { label: 'Total Feedback', value: feedbacks.length, color: 'bg-primary/10 text-primary' },
-        { label: 'Avg Rating', value: avg, color: 'bg-warning/10 text-warning' },
-        { label: 'Excellent (5★)', value: feedbacks.filter((f) => f.rating === 5).length, color: 'bg-success/10 text-success' },
-        { label: 'Poor (1-2★)', value: feedbacks.filter((f) => f.rating <= 2).length, color: 'bg-destructive/10 text-destructive' }].
+        ...[
+          [5, 'bg-success/10 text-success'],
+          [3, 'bg-warning/10 text-warning'],
+          [0, 'bg-muted text-muted-foreground'],
+        ].map(([n, color]) => ({
+          label: `${n} Star${n === 1 ? '' : 's'}`,
+          value: feedbacks.filter((f) => Number(f.rating) === n).length,
+          color,
+        }))].
         map((s) =>
         <div key={s.label} className="bg-card rounded-xl p-4 shadow-card flex items-center gap-3">
             <div className={`w-11 h-11 rounded-lg flex items-center justify-center ${s.color}`}><Star className="w-5 h-5" /></div>

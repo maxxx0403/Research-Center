@@ -1,9 +1,18 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { markActivity, clearActivity, isSessionStale } from '@/lib/sessionActivity';
 
 const INACTIVITY_LIMIT_MS = 10 * 60 * 1000; // 10 minutes
 const ACTIVITY_EVENTS = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'click'];
+
+// A session that was left unused for longer than the inactivity limit (e.g. the
+// browser was closed) must not silently resume. The reset-password page is
+// exempt because its temporary session is created by the emailed link.
+const shouldDropStaleSession = (session) =>
+  !!session?.user &&
+  !window.location.pathname.startsWith('/reset-password') &&
+  isSessionStale(INACTIVITY_LIMIT_MS);
 
 
 
@@ -94,6 +103,15 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (_event === 'INITIAL_SESSION' && shouldDropStaleSession(session)) {
+        // Left unused too long: end it and require a fresh login.
+        setTimeout(() => supabase.auth.signOut(), 0);
+        setSession(null);
+        setUser(null);
+        setRole(null);
+        setLoading(false);
+        return;
+      }
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
@@ -106,6 +124,14 @@ export const AuthProvider = ({ children }) => {
     });
 
     supabase.auth.getSession().then(({ data: { session } }) => {
+      if (shouldDropStaleSession(session)) {
+        supabase.auth.signOut();
+        setSession(null);
+        setUser(null);
+        setRole(null);
+        setLoading(false);
+        return;
+      }
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
@@ -123,6 +149,7 @@ export const AuthProvider = ({ children }) => {
   }, [role, user]);
 
   const signOut = async () => {
+    clearActivity();
     await supabase.auth.signOut();
     setRole(null);
     setAssignedRooms([]);
@@ -142,7 +169,10 @@ export const AuthProvider = ({ children }) => {
       window.location.href = '/login?reason=timeout';
     };
 
+    let lastStamp = 0;
     const resetTimer = () => {
+      const now = Date.now();
+      if (now - lastStamp > 5000) { lastStamp = now; markActivity(); }
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
       timeoutRef.current = setTimeout(handleInactivityLogout, INACTIVITY_LIMIT_MS);
     };

@@ -24,7 +24,7 @@ const faqs = [
   },
   {
     q: 'What are the operating hours?',
-    a: 'Reservations are available from 7:00 AM to 6:00 PM, Monday to Saturday. The Research Center is closed on Sundays.',
+    a: 'Reservations are available from 7:00 AM to 6:00 PM, Monday to Thursday. Fridays to Sundays are non-official hours and can only be booked for laboratories and equipment that allow it.',
   },
   {
     q: 'What do the reservation statuses mean?',

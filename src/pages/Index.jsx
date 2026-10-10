@@ -453,6 +453,11 @@ const Index = () => {
         <p className="text-primary-foreground/60 text-sm flex items-center justify-center gap-2">
           <img src={cvsuLogo} alt="CvSU" className="w-5 h-5" width={20} height={20} loading="lazy" /> © 2026 Cavite State University — Research Center Laboratory Reservation System
         </p>
+        <p className="mt-2 text-sm">
+          <Link to="/privacy-policy" className="text-primary-foreground/60 hover:text-primary-foreground/90 no-underline underline-offset-2 hover:underline">
+            Privacy Policy
+          </Link>
+        </p>
       </footer>
     </div>);
 

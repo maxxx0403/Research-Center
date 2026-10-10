@@ -43,6 +43,8 @@ import UserHelp from "./pages/user/UserHelp";
 import UserReportProblem from "./pages/user/UserReportProblem";
 import ResetPassword from "./pages/ResetPassword";
 import NotFound from "./pages/NotFound";
+import PrivacyPolicy from "./pages/PrivacyPolicy";
+import PrivacyNotice from "./components/PrivacyNotice";
 
 const queryClient = new QueryClient();
 
@@ -53,12 +55,14 @@ const App = () =>
         <Toaster />
         <Sonner />
         <BrowserRouter>
+          <PrivacyNotice />
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/login" element={<Login />} />
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/user-login" element={<Navigate to="/login" replace />} />
             <Route path="/reserve" element={<Reserve />} />
+            <Route path="/privacy-policy" element={<PrivacyPolicy />} />
             <Route path="/admin" element={<AdminLayout />}>
               <Route path="dashboard" element={<Dashboard />} />
               <Route path="reservations" element={<Reservations />} />

@@ -3,13 +3,21 @@ import { ChevronLeft, ChevronRight, UserX } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import StatusBadge from '@/components/StatusBadge';
 
-// Only Sunday (0) is closed; Friday and Saturday are open with the same hours.
-const CLOSED_DAYS = [0];
+// Friday (5), Saturday (6) and Sunday (0) are non-official days: closed unless a
+// laboratory has "allow non-official hours" switched ON.
+const DEFAULT_CLOSED_DAYS = [0, 5, 6];
+const LEGACY_CLOSED_DAYS = [0]; // used if the column does not exist yet
 
-const isWeekend = (year, month, day) => {
-  const dow = new Date(year, month, day).getDay();
-  return CLOSED_DAYS.includes(dow);
+const isClosedWeekday = (closedDays, year, month, day) =>
+  closedDays.includes(new Date(year, month, day).getDay());
+
+const openDaysLabel = (closedDays) => {
+  if (closedDays.length === 0) return 'Monday – Sunday';
+  if (closedDays.length === 1) return 'Monday – Saturday';
+  return 'Monday – Thursday';
 };
+
+const closedLabel = (closedDays) => (closedDays.length === 1 ? 'Closed (Sun)' : 'Closed (Fri–Sun)');
 
 const toDateKey = (year, month, day) => {
   const mm = String(month + 1).padStart(2, '0');
@@ -23,10 +31,12 @@ export const ReservationCalendarView = ({ labId = null }) => {
   const [staffUnavailability, setStaffUnavailability] = useState({});
   const [loading, setLoading] = useState(false);
   const [selectedDate, setSelectedDate] = useState(null);
+  const [closedDays, setClosedDays] = useState(DEFAULT_CLOSED_DAYS);
 
   useEffect(() => {
     fetchReservations();
     fetchStaffUnavailability();
+    fetchOpenDays();
   }, [currentDate, labId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchReservations = async () => {
@@ -54,6 +64,20 @@ export const ReservationCalendarView = ({ labId = null }) => {
       console.error('Error fetching reservations:', error);
     }
     setLoading(false);
+  };
+
+  // Fri-Sun are open only if at least one (shown) laboratory allows non-official hours.
+  const fetchOpenDays = async () => {
+    try {
+      let q = supabase.from('laboratories').select('id, allow_non_official_hours');
+      if (labId) q = q.eq('id', labId);
+      const { data, error } = await q;
+      if (error) throw error;
+      setClosedDays((data || []).some((l) => l.allow_non_official_hours) ? [] : DEFAULT_CLOSED_DAYS);
+    } catch (error) {
+      console.error('Error fetching non-official hours setting:', error);
+      setClosedDays(LEGACY_CLOSED_DAYS);
+    }
   };
 
   const fetchStaffUnavailability = async () => {
@@ -135,13 +159,17 @@ export const ReservationCalendarView = ({ labId = null }) => {
 
   const monthName = currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
+  // A closed weekday stays clickable if it already has reservations (e.g. made while ON).
+  const isClosedDay = (day) =>
+    isClosedWeekday(closedDays, currentDate.getFullYear(), currentDate.getMonth(), day) && getReservationsForDate(day).length === 0;
+
   return (
     <div className="w-full">
       <div className="flex justify-between items-center mb-4">
         <div>
           <h2 className="font-heading text-2xl font-bold text-primary">{monthName}</h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Bookings available <span className="font-semibold text-foreground">Monday – Saturday</span> only · 7:00 AM – 6:00 PM
+            Bookings available <span className="font-semibold text-foreground">{openDaysLabel(closedDays)}</span> only · 7:00 AM – 6:00 PM
           </p>
         </div>
         <div className="flex gap-2">
@@ -159,10 +187,12 @@ export const ReservationCalendarView = ({ labId = null }) => {
           <div className="w-3 h-3 rounded bg-white/40 backdrop-blur-xl border border-white/70" />
           Available
         </div>
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <div className="w-3 h-3 rounded bg-destructive/10 border border-destructive/30" />
-          Closed (Sun)
-        </div>
+        {closedDays.length > 0 && (
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <div className="w-3 h-3 rounded bg-destructive/10 border border-destructive/30" />
+            {closedLabel(closedDays)}
+          </div>
+        )}
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <div className="w-3 h-3 rounded bg-muted/30 border border-border/60 opacity-60" />
           Past date
@@ -175,9 +205,9 @@ export const ReservationCalendarView = ({ labId = null }) => {
 
       <div className="grid grid-cols-7 gap-2 mb-2">
         {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d, i) => (
-          <div key={d} className={`text-center font-bold text-sm p-2 ${CLOSED_DAYS.includes(i) ? 'text-destructive/60' : 'text-muted-foreground'}`}>
+          <div key={d} className={`text-center font-bold text-sm p-2 ${closedDays.includes(i) ? 'text-destructive/60' : 'text-muted-foreground'}`}>
             {d}
-            {CLOSED_DAYS.includes(i) && (
+            {closedDays.includes(i) && (
               <span className="block text-[9px] font-normal leading-none mt-0.5 text-destructive/50">closed</span>
             )}
           </div>
@@ -186,8 +216,8 @@ export const ReservationCalendarView = ({ labId = null }) => {
 
       <div className="grid grid-cols-7 gap-2 mb-6">
         {days.map((day, idx) => {
-          const closed = day ? isWeekend(currentDate.getFullYear(), currentDate.getMonth(), day) : false;
-          const dayReservations = day && !closed ? getReservationsForDate(day) : [];
+          const closed = day ? isClosedDay(day) : false;
+          const dayReservations = day ? getReservationsForDate(day) : [];
           const unavailableStaff = day ? getUnavailableStaffForDate(day) : [];
           const isToday = day && new Date().toDateString() === new Date(currentDate.getFullYear(), currentDate.getMonth(), day).toDateString();
           const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
@@ -242,7 +272,7 @@ export const ReservationCalendarView = ({ labId = null }) => {
         })}
       </div>
 
-      {selectedDate && !isWeekend(currentDate.getFullYear(), currentDate.getMonth(), selectedDate) && (
+      {selectedDate && !isClosedDay(selectedDate) && (
         <div className="isolate bg-white/30 dark:bg-white/10 backdrop-blur-2xl backdrop-saturate-[1.8] border border-white/70 rounded-xl p-6
             shadow-[0_8px_32px_rgba(20,60,40,0.12),inset_0_1px_1px_rgba(255,255,255,0.9),inset_0_0_24px_rgba(255,255,255,0.3)]
             relative overflow-hidden">
