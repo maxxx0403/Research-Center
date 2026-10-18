@@ -437,7 +437,7 @@ const UserReserve = () => {
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="bg-card rounded-2xl shadow-lg p-8 md:p-10 animate-fade-up space-y-8">
+      <form onSubmit={handleSubmit} className="bg-card rounded-2xl shadow-lg p-4 sm:p-8 md:p-10 animate-fade-up space-y-8">
         {error && (
           <div className="bg-destructive/10 border-2 border-destructive/30 text-destructive rounded-xl p-4 text-sm font-semibold flex items-center gap-3">
             <AlertCircle className="w-5 h-5 flex-shrink-0" />

@@ -2,13 +2,17 @@ import { useState } from 'react';
 import { FlaskConical, Package } from 'lucide-react';
 import LaboratoryReport from '@/components/LaboratoryReport';
 import EquipmentReport from '@/components/EquipmentReport';
+import MonthFilter from '@/components/MonthFilter';
+import { currentMonthManila, monthLabel } from '@/lib/monthRange';
 
 const Reports = () => {
   const [tab, setTab] = useState('lab');
+  const [month, setMonth] = useState(currentMonthManila());
 
   return (
     <div className="space-y-5">
-      <div className="flex gap-1 border-b border-border">
+      <div className="flex flex-wrap items-end justify-between gap-3 border-b border-border">
+      <div className="flex gap-1">
         {[
           { key: 'lab', label: 'Laboratories', icon: FlaskConical },
           { key: 'equipment', label: 'Equipment', icon: Package },
@@ -23,9 +27,15 @@ const Reports = () => {
           </button>
         ))}
       </div>
+        <div className="pb-2"><MonthFilter value={month} onChange={setMonth} /></div>
+      </div>
 
-      {tab === 'lab' && <LaboratoryReport />}
-      {tab === 'equipment' && <EquipmentReport />}
+      <p className="text-xs text-muted-foreground -mt-2">
+        Showing only what was actually used (completed or in use) in <span className="font-semibold text-foreground">{monthLabel(month)}</span>. Exported files use the same month.
+      </p>
+
+      {tab === 'lab' && <LaboratoryReport month={month} />}
+      {tab === 'equipment' && <EquipmentReport month={month} />}
     </div>
   );
 };

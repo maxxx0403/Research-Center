@@ -156,14 +156,18 @@ export const buildReservationsWorkbook = async (labItems = [], eqItems = []) => 
   });
 };
 
-/** Builds the workbook and triggers a browser download. */
-export const downloadReservationsExcel = async (labItems, eqItems) => {
+/**
+ * Builds the workbook and triggers a browser download.
+ * @param {object} [opts]
+ * @param {string} [opts.month] "YYYY-MM" when the rows are for one month -> file is named reservations-2026-10.xlsx
+ */
+export const downloadReservationsExcel = async (labItems, eqItems, { month } = {}) => {
   const blob = await buildReservationsWorkbook(labItems, eqItems);
   const stamp = new Intl.DateTimeFormat('en-CA', { timeZone: APP_TIMEZONE }).format(new Date());
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `reservations-backup-${stamp}.xlsx`;
+  a.download = month ? `reservations-${month}.xlsx` : `reservations-backup-${stamp}.xlsx`;
   document.body.appendChild(a);
   a.click();
   a.remove();

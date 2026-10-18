@@ -165,9 +165,9 @@ export const ReservationCalendarView = ({ labId = null }) => {
 
   return (
     <div className="w-full">
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
         <div>
-          <h2 className="font-heading text-2xl font-bold text-primary">{monthName}</h2>
+          <h2 className="font-heading text-xl sm:text-2xl font-bold text-primary">{monthName}</h2>
           <p className="text-xs text-muted-foreground mt-0.5">
             Bookings available <span className="font-semibold text-foreground">{openDaysLabel(closedDays)}</span> only · 7:00 AM – 6:00 PM
           </p>
@@ -203,9 +203,9 @@ export const ReservationCalendarView = ({ labId = null }) => {
         </div>
       </div>
 
-      <div className="grid grid-cols-7 gap-2 mb-2">
+      <div className="grid grid-cols-7 gap-1 sm:gap-2 mb-2">
         {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d, i) => (
-          <div key={d} className={`text-center font-bold text-sm p-2 ${closedDays.includes(i) ? 'text-destructive/60' : 'text-muted-foreground'}`}>
+          <div key={d} className={`text-center font-bold text-[11px] sm:text-sm p-1 sm:p-2 ${closedDays.includes(i) ? 'text-destructive/60' : 'text-muted-foreground'}`}>
             {d}
             {closedDays.includes(i) && (
               <span className="block text-[9px] font-normal leading-none mt-0.5 text-destructive/50">closed</span>
@@ -214,7 +214,7 @@ export const ReservationCalendarView = ({ labId = null }) => {
         ))}
       </div>
 
-      <div className="grid grid-cols-7 gap-2 mb-6">
+      <div className="grid grid-cols-7 gap-1 sm:gap-2 mb-6">
         {days.map((day, idx) => {
           const closed = day ? isClosedDay(day) : false;
           const dayReservations = day ? getReservationsForDate(day) : [];
@@ -229,7 +229,7 @@ export const ReservationCalendarView = ({ labId = null }) => {
               key={idx}
               onClick={() => { if (!day || closed || isPast) return; setSelectedDate(selectedDate === day ? null : day); }}
               title={unavailableStaff.length > 0 ? `Unavailable: ${unavailableStaff.map((s) => `${s.name} (${s.roomLabel})`).join(', ')}` : undefined}
-              className={`min-h-[60px] sm:min-h-[80px] md:min-h-[100px] p-1.5 sm:p-2 rounded-lg border-2 backdrop-blur-xl transition-colors
+              className={`min-h-[56px] sm:min-h-[80px] md:min-h-[100px] p-1 sm:p-2 rounded-lg border-2 backdrop-blur-xl transition-colors
                 ${!day ? 'bg-white/5 border-transparent' : ''}
                 ${closed ? 'bg-destructive/10 border-destructive/20 cursor-not-allowed' : isPast ? 'bg-white/10 border-white/40 opacity-60 cursor-not-allowed' : isToday ? 'border-primary bg-primary/10 cursor-pointer' : isSelected ? 'bg-primary/15 border-primary cursor-pointer' : day ? 'bg-white/40 border-white/70 hover:border-primary/50 hover:bg-primary/10 cursor-pointer' : ''}
               `}
@@ -237,7 +237,7 @@ export const ReservationCalendarView = ({ labId = null }) => {
               {day && (
                 <>
                   <div className="flex items-center justify-between gap-1 mb-1">
-                    <div className={`font-semibold text-sm ${closed ? 'text-destructive/40' : isToday ? 'text-primary' : 'text-foreground'}`}>
+                    <div className={`font-semibold text-xs sm:text-sm ${closed ? 'text-destructive/40' : isToday ? 'text-primary' : 'text-foreground'}`}>
                       {day}
                     </div>
                     {!closed && unavailableStaff.length > 0 && (
@@ -245,19 +245,19 @@ export const ReservationCalendarView = ({ labId = null }) => {
                     )}
                   </div>
                   {closed ? (
-                    <div className="text-[10px] text-destructive/50 font-medium mt-1 leading-tight">No booking</div>
+                    <div className="text-[8px] sm:text-[10px] text-destructive/50 font-medium mt-1 leading-tight">No booking</div>
                   ) : (
                     <div className="space-y-1">
                       {dayReservations.slice(0, 2).map((res, i) => (
-                        <div key={i} className="text-xs px-1 py-0.5 rounded bg-secondary/50 text-secondary-foreground truncate" title={`${res.researcher_name} - ${res.laboratories?.lab_code || 'Lab'}`}>
+                        <div key={i} className="text-[9px] sm:text-xs px-0.5 sm:px-1 py-0.5 rounded bg-secondary/50 text-secondary-foreground truncate" title={`${res.researcher_name} - ${res.laboratories?.lab_code || 'Lab'}`}>
                           {res.researcher_name.split(' ')[0]}
                         </div>
                       ))}
                       {dayReservations.length > 2 && (
-                        <div className="text-xs text-muted-foreground px-1">+{dayReservations.length - 2} more</div>
+                        <div className="text-[9px] sm:text-xs text-muted-foreground px-0.5 sm:px-1">+{dayReservations.length - 2}<span className="hidden sm:inline"> more</span></div>
                       )}
                       {unavailableStaff.length > 0 && (
-                        <div className="text-[10px] text-amber-700 px-1 truncate">
+                        <div className="hidden sm:block text-[10px] text-amber-700 px-1 truncate">
                           {unavailableStaff.length === 1
                             ? `${unavailableStaff[0].roomLabel} unavailable`
                             : `${unavailableStaff.length} rooms unavailable`}
@@ -273,7 +273,7 @@ export const ReservationCalendarView = ({ labId = null }) => {
       </div>
 
       {selectedDate && !isClosedDay(selectedDate) && (
-        <div className="isolate bg-white/30 dark:bg-white/10 backdrop-blur-2xl backdrop-saturate-[1.8] border border-white/70 rounded-xl p-6
+        <div className="isolate bg-white/30 dark:bg-white/10 backdrop-blur-2xl backdrop-saturate-[1.8] border border-white/70 rounded-xl p-4 sm:p-6
             shadow-[0_8px_32px_rgba(20,60,40,0.12),inset_0_1px_1px_rgba(255,255,255,0.9),inset_0_0_24px_rgba(255,255,255,0.3)]
             relative overflow-hidden">
           <span aria-hidden className="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-b from-white/50 via-white/5 to-transparent" />

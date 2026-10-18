@@ -1,25 +1,26 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Download, Search } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-
-const ACTIVE = ['reserved', 'in_use'];
-const CLOSED = ['cancelled', 'rejected'];
-
-const statusLabel = (s) => (s || '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+import { currentMonthManila, monthLabel, monthRangeISO } from '@/lib/monthRange';
+import { USED_STATUSES } from '@/lib/reportUsage';
 
 const csvCell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
 
 /**
- * Equipment report: inventory summary + how often each equipment was reserved.
+ * Equipment report: which equipment was actually USED in a month.
  * Counts both standalone equipment requests (equipment_reservations) and
  * equipment attached to laboratory reservations (reservation_equipment).
+ * Only used reservations (in use / completed) are counted, and only equipment
+ * that was used in that month is listed.
  *
  * Props:
  *  - roomIds: optional array of laboratory ids to limit the report to (staff).
+ *  - month: "YYYY-MM" - only reservations scheduled in this month are counted
+ *    (defaults to the current month). The CSV export uses the same month.
  */
-const EquipmentReport = ({ roomIds = [] }) => {
+const EquipmentReport = ({ roomIds = [], month = currentMonthManila() }) => {
   const [equipment, setEquipment] = useState([]);
-  const [usage, setUsage] = useState([]); // [{ equipment_id, status, qty }]
+  const [usage, setUsage] = useState([]); // [{ equipment_id, status, qty }] (used reservations only)
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
 
@@ -29,10 +30,21 @@ const EquipmentReport = ({ roomIds = [] }) => {
     let cancelled = false;
     (async () => {
       setLoading(true);
+      const { startISO, endISO } = monthRangeISO(month);
       const [eqRes, standaloneRes, attachedRes] = await Promise.all([
-        supabase.from('equipment').select('id, name, brand, model, quantity, available_quantity, status, laboratory_id, laboratories(lab_name, lab_code)').order('name'),
-        supabase.from('equipment_reservations').select('equipment_id, status, quantity_reserved'),
-        supabase.from('reservation_equipment').select('equipment_id, quantity_reserved, reservations!inner(status)'),
+        supabase.from('equipment').select('id, name, brand, model, laboratory_id, laboratories(lab_name, lab_code)').order('name'),
+        supabase
+          .from('equipment_reservations')
+          .select('equipment_id, status, quantity_reserved')
+          .in('status', USED_STATUSES)
+          .gte('start_datetime', startISO)
+          .lt('start_datetime', endISO),
+        supabase
+          .from('reservation_equipment')
+          .select('equipment_id, quantity_reserved, reservations!inner(status, start_datetime)')
+          .in('reservations.status', USED_STATUSES)
+          .gte('reservations.start_datetime', startISO)
+          .lt('reservations.start_datetime', endISO),
       ]);
       if (cancelled) return;
 
@@ -42,7 +54,7 @@ const EquipmentReport = ({ roomIds = [] }) => {
       const rows = [
         ...(standaloneRes.data || []).map((r) => ({ equipment_id: r.equipment_id, status: r.status, qty: r.quantity_reserved || 0 })),
         ...(attachedRes.data || []).map((r) => ({ equipment_id: r.equipment_id, status: r.reservations?.status, qty: r.quantity_reserved || 0 })),
-      ].filter((r) => ids.has(r.equipment_id));
+      ].filter((r) => ids.has(r.equipment_id) && USED_STATUSES.includes(r.status));
 
       setEquipment(scoped);
       setUsage(rows);
@@ -50,21 +62,22 @@ const EquipmentReport = ({ roomIds = [] }) => {
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roomKey]);
+  }, [roomKey, month]);
 
+  // Only equipment that was used this month
   const rows = useMemo(() => {
-    const map = new Map(equipment.map((e) => [e.id, { ...e, total: 0, completed: 0, active: 0, pending: 0, closed: 0, units: 0 }]));
+    const map = new Map(equipment.map((e) => [e.id, { ...e, total: 0, completed: 0, inUse: 0, units: 0 }]));
     usage.forEach((u) => {
       const row = map.get(u.equipment_id);
       if (!row) return;
       row.total += 1;
       row.units += u.qty;
       if (u.status === 'completed') row.completed += 1;
-      else if (ACTIVE.includes(u.status)) row.active += 1;
-      else if (u.status === 'pending') row.pending += 1;
-      else if (CLOSED.includes(u.status)) row.closed += 1;
+      else if (u.status === 'in_use') row.inUse += 1;
     });
-    return [...map.values()].sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
+    return [...map.values()]
+      .filter((r) => r.total > 0)
+      .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
   }, [equipment, usage]);
 
   const filtered = rows.filter((r) => {
@@ -74,28 +87,23 @@ const EquipmentReport = ({ roomIds = [] }) => {
   });
 
   const totals = useMemo(() => ({
-    items: equipment.length,
-    units: equipment.reduce((sum, e) => sum + (e.quantity || 0), 0),
-    available: equipment.filter((e) => e.status === 'available').length,
-    inUse: equipment.filter((e) => e.status === 'in_use').length,
-    maintenance: equipment.filter((e) => e.status === 'maintenance').length,
-    reservations: usage.length,
+    equipmentUsed: rows.length,
+    uses: usage.length,
     completed: usage.filter((u) => u.status === 'completed').length,
-    active: usage.filter((u) => ACTIVE.includes(u.status)).length,
-    cancelled: usage.filter((u) => CLOSED.includes(u.status)).length,
-  }), [equipment, usage]);
+    inUse: usage.filter((u) => u.status === 'in_use').length,
+  }), [rows, usage]);
 
   const exportCsv = () => {
-    const header = ['Equipment', 'Brand', 'Model', 'Laboratory', 'Qty', 'Available Qty', 'Status', 'Total Reservations', 'Completed', 'Active', 'Pending', 'Cancelled/Rejected'];
+    const header = ['Month', 'Equipment', 'Brand', 'Model', 'Laboratory', 'Times Used', 'Units Used', 'Completed', 'In Use'];
     const lines = filtered.map((r) => [
-      r.name, r.brand, r.model, r.laboratories?.lab_code, r.quantity, r.available_quantity, statusLabel(r.status),
-      r.total, r.completed, r.active, r.pending, r.closed,
+      monthLabel(month), r.name, r.brand, r.model, r.laboratories?.lab_code,
+      r.total, r.units, r.completed, r.inUse,
     ].map(csvCell).join(','));
     const csv = '\uFEFF' + [header.map(csvCell).join(','), ...lines].join('\r\n');
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
     const a = document.createElement('a');
     a.href = url;
-    a.download = `equipment-report-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `equipment-report-${month}.csv`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -103,11 +111,10 @@ const EquipmentReport = ({ roomIds = [] }) => {
   };
 
   const cards = [
-    { label: 'Total Units', value: totals.units, color: 'text-primary' },
-    { label: 'Total Reservations', value: totals.reservations, color: 'text-primary' },
+    { label: 'Equipment Used', value: totals.equipmentUsed, color: 'text-primary' },
+    { label: 'Total Uses', value: totals.uses, color: 'text-primary' },
     { label: 'Completed', value: totals.completed, color: 'text-success' },
-    { label: 'Under Maintenance', value: totals.maintenance, color: 'text-destructive' },
-    { label: 'Cancelled / Rejected', value: totals.cancelled, color: 'text-destructive' },
+    { label: 'In Use', value: totals.inUse, color: 'text-warning' },
   ];
 
   const th = 'px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider';
@@ -125,7 +132,7 @@ const EquipmentReport = ({ roomIds = [] }) => {
 
       <div className="bg-card rounded-xl shadow-card overflow-hidden">
         <div className="px-6 py-4 border-b border-border flex flex-wrap items-center justify-between gap-3">
-          <h2 className="font-heading text-sm font-bold">Reservations by Equipment</h2>
+          <h2 className="font-heading text-sm font-bold">Equipment Used <span className="text-muted-foreground font-semibold">· {monthLabel(month)}</span></h2>
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative">
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -150,7 +157,9 @@ const EquipmentReport = ({ roomIds = [] }) => {
         {loading ? (
           <div className="text-center py-10 text-muted-foreground">Loading…</div>
         ) : filtered.length === 0 ? (
-          <div className="text-center py-10 text-muted-foreground">No equipment found</div>
+          <div className="text-center py-10 text-muted-foreground">
+            {search ? 'No matching equipment' : `No equipment was used in ${monthLabel(month)}`}
+          </div>
         ) : (
           <>
             {/* Phone: stacked cards */}
@@ -159,13 +168,13 @@ const EquipmentReport = ({ roomIds = [] }) => {
                 <div key={r.id} className="px-4 py-3 space-y-1.5">
                   <div className="font-semibold text-sm">{r.name}</div>
                   <div className="text-xs text-muted-foreground">
-                    {[r.brand, r.laboratories?.lab_code].filter(Boolean).join(' · ') || '—'} · Qty {r.quantity}
+                    {[r.brand, r.laboratories?.lab_code].filter(Boolean).join(' · ') || '—'}
                   </div>
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
-                    <span className="text-muted-foreground">Total: <span className="font-semibold text-foreground">{r.total}</span></span>
+                    <span className="text-muted-foreground">Used: <span className="font-semibold text-foreground">{r.total}</span></span>
+                    <span className="text-muted-foreground">Units: <span className="font-semibold text-foreground">{r.units}</span></span>
                     <span className="text-success font-semibold">Completed: {r.completed}</span>
-                    <span className="text-warning font-semibold">Active: {r.active}</span>
-                    <span className="text-destructive font-semibold">Cancelled: {r.closed}</span>
+                    <span className="text-warning font-semibold">In use: {r.inUse}</span>
                   </div>
                 </div>
               ))}
@@ -178,12 +187,10 @@ const EquipmentReport = ({ roomIds = [] }) => {
                   <tr className="bg-muted/50 border-b-2 border-border">
                     <th className={th}>Equipment</th>
                     <th className={th}>Laboratory</th>
-                    <th className={th}>Qty</th>
-                    <th className={th}>Total</th>
+                    <th className={th}>Times Used</th>
+                    <th className={th}>Units Used</th>
                     <th className={th}>Completed</th>
-                    <th className={th}>Active</th>
-                    <th className={th}>Pending</th>
-                    <th className={th}>Cancelled</th>
+                    <th className={th}>In Use</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -196,12 +203,10 @@ const EquipmentReport = ({ roomIds = [] }) => {
                       <td className="px-4 py-3 text-xs">
                         <code className="bg-muted px-1.5 py-0.5 rounded">{r.laboratories?.lab_code || '—'}</code>
                       </td>
-                      <td className="px-4 py-3">{r.quantity}</td>
                       <td className="px-4 py-3 font-semibold">{r.total}</td>
+                      <td className="px-4 py-3">{r.units}</td>
                       <td className="px-4 py-3 text-success font-semibold">{r.completed}</td>
-                      <td className="px-4 py-3 text-warning font-semibold">{r.active}</td>
-                      <td className="px-4 py-3 text-muted-foreground font-semibold">{r.pending}</td>
-                      <td className="px-4 py-3 text-destructive font-semibold">{r.closed}</td>
+                      <td className="px-4 py-3 text-warning font-semibold">{r.inUse}</td>
                     </tr>
                   ))}
                 </tbody>

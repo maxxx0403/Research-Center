@@ -67,7 +67,7 @@ const UserEquipment = () => {
       </div>
 
       <div className="bg-card rounded-xl shadow-card overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto stack-table">
           <table className="w-full text-sm border-collapse">
             <thead>
               <tr className="bg-muted/50 border-b-2 border-border">

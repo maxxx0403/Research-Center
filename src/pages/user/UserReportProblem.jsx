@@ -113,7 +113,7 @@ const UserReportProblem = () => {
         <p className="text-muted-foreground">Tell us what went wrong and we will look into it.</p>
       </div>
 
-      <form onSubmit={handleSubmit} className="bg-card rounded-2xl shadow-lg p-8 space-y-6">
+      <form onSubmit={handleSubmit} className="bg-card rounded-2xl shadow-lg p-4 sm:p-8 space-y-6">
         {error && (
           <div className="bg-destructive/10 border border-destructive/25 text-destructive rounded-xl p-3 text-sm font-medium">
             {error}

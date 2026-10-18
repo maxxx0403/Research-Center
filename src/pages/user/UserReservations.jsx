@@ -135,7 +135,8 @@ const UserReservations = () => {
       setHighlightId(`${type}-${id}`);
       setActiveTab(type === 'lab' ? 'lab' : 'equipment');
       setTimeout(() => {
-        document.getElementById(`row-${type}-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        [...document.querySelectorAll(`[data-row="${type}-${id}"]`), document.getElementById(`row-${type}-${id}`)]
+          .filter(Boolean).find((el) => el.offsetParent !== null)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }, 100);
       setTimeout(() => setHighlightId(null), 3000);
     }
@@ -350,50 +351,8 @@ const UserReservations = () => {
     setDownloadingId(null);
   };
 
-  return (
-    <div className="space-y-6">
-      <div className="flex gap-1 border-b border-border">
-        {[
-          { key: 'lab', label: 'Laboratories', icon: FlaskConical, count: labGroups.length },
-          { key: 'equipment', label: 'Equipment', icon: Package, count: eqGroups.length },
-        ].map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            onClick={() => setActiveTab(t.key)}
-            className={`inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold bg-transparent border-t-0 border-x-0 border-b-2 -mb-px cursor-pointer transition-colors ${activeTab === t.key ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
-          >
-            <t.icon className="w-4 h-4" /> {t.label}
-            <span className={`px-1.5 py-0.5 rounded-full text-xs font-semibold ${activeTab === t.key ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
-              {t.count}
-            </span>
-          </button>
-        ))}
-      </div>
-
-      {activeTab === 'lab' && (
-    <div className="bg-card rounded-xl shadow-card overflow-hidden">
-      <div className="px-6 py-4 border-b border-border flex items-center gap-2">
-        <FlaskConical className="w-4 h-4 text-primary" />
-        <h2 className="font-heading text-sm font-bold">My Lab Reservations <span className="bg-muted text-muted-foreground px-2 py-0.5 rounded-full text-xs ml-2">{labGroups.length}</span></h2>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm border-collapse">
-          <thead>
-            <tr className="bg-muted/50 border-b-2 border-border">
-              <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase">ID</th>
-              <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase">Laboratory</th>
-              <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase">Equipment</th>
-              <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase">Purpose</th>
-              <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase">Schedule</th>
-              <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase">Status</th>
-              <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr><td colSpan={7} className="text-center py-12 text-muted-foreground">Loading…</td></tr>
-            ) : labGroups.length ? labGroups.map((group) => {
+  // One set of pieces per reservation: shown as a table row on desktop and as a card on phones.
+  const labPieces = (group) => {
               const { primary } = group;
               const isBatch = group.items.length > 1;
               const isGroupExpanded = expandedLabGroups[group.key];
@@ -401,14 +360,13 @@ const UserReservations = () => {
               // scoped by reservation id like before.
               const hasEquipment = !isBatch && primary.reservation_equipment && primary.reservation_equipment.length > 0;
               const isEquipExpanded = expandedEquipment[primary.id];
-              return (
-                <Fragment key={group.key}>
-                  <tr id={`row-lab-${primary.id}`} className={`border-b border-muted hover:bg-muted/30 transition-colors ${highlightId === `lab-${primary.id}` ? 'bg-primary/10 ring-2 ring-primary/40' : ''}`}>
-                    <td className="px-4 py-3 font-semibold text-xs">
+    return {
+      primary, isBatch: group.items.length > 1,
+      id: (<>
                       #RC{String(primary.id).padStart(5, '0')}
                       {isBatch && <span className="text-muted-foreground font-normal"> (+{group.items.length - 1} more)</span>}
-                    </td>
-                    <td className="px-4 py-3">
+      </>),
+      lab: (<>
                       {isBatch ? (
                         <button
                           onClick={() => toggleLabGroup(group.key)}
@@ -424,8 +382,8 @@ const UserReservations = () => {
                           <code className="text-[0.7rem] bg-muted px-1 py-0.5 rounded">{primary.laboratories?.lab_code}</code>
                         </>
                       )}
-                    </td>
-                    <td className="px-4 py-3">
+      </>),
+      equipment: (<>
                       {isBatch ? (
                         <span className="text-xs text-muted-foreground italic">See breakdown</span>
                       ) : hasEquipment ? (
@@ -440,9 +398,11 @@ const UserReservations = () => {
                       ) : (
                         <span className="text-xs text-muted-foreground italic">None</span>
                       )}
-                    </td>
-                    <td className="px-4 py-3 text-xs max-w-[200px]">{primary.research_purpose?.slice(0, 80)}</td>
-                    <td className="px-4 py-3 text-xs whitespace-nowrap">
+      </>),
+      purpose: (<>
+{primary.research_purpose?.slice(0, 80)}
+      </>),
+      schedule: (<>
                       {isBatch ? (
                         <span className="text-muted-foreground italic">Multiple schedules</span>
                       ) : (
@@ -451,16 +411,16 @@ const UserReservations = () => {
                           {new Date(primary.start_datetime).toLocaleTimeString('en-US', { timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit' })} – {new Date(primary.end_datetime).toLocaleTimeString('en-US', { timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit' })}
                         </>
                       )}
-                    </td>
-                    <td className="px-4 py-3">
+      </>),
+      status: (<>
                       <StatusBadge status={group.status} />
                       {group.mixedStatus && <p className="text-[0.65rem] text-muted-foreground mt-1">Mixed — see breakdown</p>}
                       <RejectionNote
                         reasons={group.rejectionReasons}
                         onOpen={() => setMessagingItem({ type: 'lab', id: primary.id, label: `Reservation #RC${String(primary.id).padStart(5, '0')}`, reason: group.rejectionReasons[0] })}
                       />
-                    </td>
-                    <td className="px-4 py-3">
+      </>),
+      actions: (<>
                       <RowActions
                         items={[
                           {
@@ -491,13 +451,9 @@ const UserReservations = () => {
                           },
                         ]}
                       />
-                    </td>
-                  </tr>
-
-                  {/* Batch breakdown: one lab per item, each with its own schedule, equipment, and edit control */}
-                  {isBatch && isGroupExpanded && (
-                    <tr key={`lab-items-${group.key}`} className="bg-primary/5 border-b border-primary/10">
-                      <td colSpan={7} className="px-6 py-3">
+      </>),
+      panels: [
+        isBatch && isGroupExpanded && { key: 'panel0', tr: 'bg-primary/5 border-b border-primary/10', td: 'px-6 py-3', node: (<>
                         <p className="text-xs font-bold text-primary uppercase tracking-wider mb-2 flex items-center gap-1.5">
                           <FlaskConical className="w-3.5 h-3.5" /> Laboratories in this Reservation
                         </p>
@@ -541,14 +497,8 @@ const UserReservations = () => {
                             );
                           })}
                         </div>
-                      </td>
-                    </tr>
-                  )}
-
-                  {/* Equipment expand row (single-lab reservations only) */}
-                  {!isBatch && hasEquipment && isEquipExpanded && (
-                    <tr key={`eq-${primary.id}`} className="bg-primary/5 border-b border-primary/10">
-                      <td colSpan={7} className="px-6 py-3">
+        </>) },
+        !isBatch && hasEquipment && isEquipExpanded && { key: 'panel1', tr: 'bg-primary/5 border-b border-primary/10', td: 'px-6 py-3', node: (<>
                         <p className="text-xs font-bold text-primary uppercase tracking-wider mb-2 flex items-center gap-1.5">
                           <Package className="w-3.5 h-3.5" /> Reserved Equipment
                         </p>
@@ -565,14 +515,8 @@ const UserReservations = () => {
                             </div>
                           ))}
                         </div>
-                      </td>
-                    </tr>
-                  )}
-
-                  {/* Edit modal row — applies to whichever single reservation row (batch item or standalone) is being edited */}
-                  {group.items.some((it) => editingId === it.id) && (
-                    <tr key={`edit-${group.key}`} className="bg-primary/5 border-2 border-primary">
-                      <td colSpan={7} className="p-6">
+        </>) },
+        group.items.some((it) => editingId === it.id) && { key: 'panel2', tr: 'bg-primary/5 border-2 border-primary', td: 'p-6', node: (<>
                         <div className="space-y-4">
                           <h3 className="font-bold text-foreground">
                             {editData.wasRejected ? 'Edit & Resubmit' : 'Edit'} Reservation #{String(editingId).padStart(5, '0')}
@@ -639,53 +583,23 @@ const UserReservations = () => {
                             </button>
                           </div>
                         </div>
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
-              );
-            }) : (
-              <tr><td colSpan={7} className="text-center py-12 text-muted-foreground">No reservations found</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
-      )}
+        </>) },
+      ].filter(Boolean),
+    };
+  };
 
-      {activeTab === 'equipment' && (
-    <div className="bg-card rounded-xl shadow-card overflow-hidden">
-      <div className="px-6 py-4 border-b border-border flex items-center gap-2">
-        <Package className="w-4 h-4 text-primary" />
-        <h2 className="font-heading text-sm font-bold">My Equipment Reservations <span className="bg-muted text-muted-foreground px-2 py-0.5 rounded-full text-xs ml-2">{eqGroups.length}</span></h2>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm border-collapse">
-          <thead>
-            <tr className="bg-muted/50 border-b-2 border-border">
-              <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase">ID</th>
-              <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase">Equipment</th>
-              <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase">Quantity</th>
-              <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase">Schedule</th>
-              <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase">Status</th>
-              <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr><td colSpan={6} className="text-center py-12 text-muted-foreground">Loading…</td></tr>
-            ) : eqGroups.length ? eqGroups.map((group) => {
+  // One set of pieces per reservation: shown as a table row on desktop and as a card on phones.
+  const eqPieces = (group) => {
               const { primary } = group;
               const isBatch = group.items.length > 1;
               const isExpanded = expandedEqGroups[group.key];
-              return (
-                <Fragment key={group.key}>
-                  <tr id={`row-equipment-${primary.id}`} className={`border-b border-muted hover:bg-muted/30 transition-colors ${highlightId === `equipment-${primary.id}` ? 'bg-primary/10 ring-2 ring-primary/40' : ''}`}>
-                    <td className="px-4 py-3 font-semibold text-xs">
+    return {
+      primary, isBatch: group.items.length > 1,
+      id: (<>
                       #EQ{String(primary.id).padStart(5, '0')}
                       {isBatch && <span className="text-muted-foreground font-normal"> (+{group.items.length - 1} more)</span>}
-                    </td>
-                    <td className="px-4 py-3">
+      </>),
+      equipment: (<>
                       {isBatch ? (
                         <button
                           onClick={() => toggleEqGroup(group.key)}
@@ -704,21 +618,23 @@ const UserReservations = () => {
                           </div>
                         </>
                       )}
-                    </td>
-                    <td className="px-4 py-3 text-xs font-semibold">x{group.totalQuantity}</td>
-                    <td className="px-4 py-3 text-xs whitespace-nowrap">
+      </>),
+      qty: (<>
+x{group.totalQuantity}
+      </>),
+      schedule: (<>
                       {new Date(primary.start_datetime).toLocaleDateString('en-US', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric' })}<br />
                       {new Date(primary.start_datetime).toLocaleTimeString('en-US', { timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit' })} – {new Date(primary.end_datetime).toLocaleTimeString('en-US', { timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit' })}
-                    </td>
-                    <td className="px-4 py-3">
+      </>),
+      status: (<>
                       <StatusBadge status={group.status} />
                       {group.mixedStatus && <p className="text-[0.65rem] text-muted-foreground mt-1">Mixed — see items</p>}
                       <RejectionNote
                         reasons={group.rejectionReasons}
                         onOpen={() => setMessagingItem({ type: 'equipment', id: primary.id, label: `Equipment request #EQ${String(primary.id).padStart(5, '0')}`, reason: group.rejectionReasons[0] })}
                       />
-                    </td>
-                    <td className="px-4 py-3">
+      </>),
+      actions: (<>
                       <RowActions
                         items={[
                           {
@@ -749,13 +665,9 @@ const UserReservations = () => {
                           },
                         ]}
                       />
-                    </td>
-                  </tr>
-
-                  {/* Batch item breakdown */}
-                  {isBatch && isExpanded && (
-                    <tr key={`eq-items-${group.key}`} className="bg-primary/5 border-b border-primary/10">
-                      <td colSpan={6} className="px-6 py-3">
+      </>),
+      panels: [
+        isBatch && isExpanded && { key: 'panel0', tr: 'bg-primary/5 border-b border-primary/10', td: 'px-6 py-3', node: (<>
                         <p className="text-xs font-bold text-primary uppercase tracking-wider mb-2 flex items-center gap-1.5">
                           <Package className="w-3.5 h-3.5" /> Reserved Equipment
                         </p>
@@ -773,14 +685,8 @@ const UserReservations = () => {
                             </div>
                           ))}
                         </div>
-                      </td>
-                    </tr>
-                  )}
-
-                  {/* Edit modal row */}
-                  {editingEqKey === group.key && (
-                    <tr key={`edit-eq-${group.key}`} className="bg-primary/5 border-2 border-primary">
-                      <td colSpan={6} className="p-6">
+        </>) },
+        editingEqKey === group.key && { key: 'panel1', tr: 'bg-primary/5 border-2 border-primary', td: 'p-6', node: (<>
                         <div className="space-y-4">
                           <h3 className="font-bold text-foreground">
                             {editEqData.wasRejected ? 'Edit & Resubmit' : 'Edit'} Equipment Request #EQ{String(primary.id).padStart(5, '0')}
@@ -847,9 +753,165 @@ const UserReservations = () => {
                             </button>
                           </div>
                         </div>
-                      </td>
+        </>) },
+      ].filter(Boolean),
+    };
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex gap-1 border-b border-border">
+        {[
+          { key: 'lab', label: 'Laboratories', icon: FlaskConical, count: labGroups.length },
+          { key: 'equipment', label: 'Equipment', icon: Package, count: eqGroups.length },
+        ].map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            onClick={() => setActiveTab(t.key)}
+            className={`inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold bg-transparent border-t-0 border-x-0 border-b-2 -mb-px cursor-pointer transition-colors ${activeTab === t.key ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+          >
+            <t.icon className="w-4 h-4" /> {t.label}
+            <span className={`px-1.5 py-0.5 rounded-full text-xs font-semibold ${activeTab === t.key ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
+              {t.count}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'lab' && (
+    <div className="bg-card rounded-xl shadow-card overflow-hidden">
+      <div className="px-6 py-4 border-b border-border flex items-center gap-2">
+        <FlaskConical className="w-4 h-4 text-primary" />
+        <h2 className="font-heading text-sm font-bold">My Lab Reservations <span className="bg-muted text-muted-foreground px-2 py-0.5 rounded-full text-xs ml-2">{labGroups.length}</span></h2>
+      </div>
+      <div className="hidden md:block overflow-x-auto">
+        <table className="w-full text-sm border-collapse">
+          <thead>
+            <tr className="bg-muted/50 border-b-2 border-border">
+              <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase">ID</th>
+              <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase">Laboratory</th>
+              <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase">Equipment</th>
+              <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase">Purpose</th>
+              <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase">Schedule</th>
+              <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase">Status</th>
+              <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan={7} className="text-center py-12 text-muted-foreground">Loading…</td></tr>
+            ) : labGroups.length ? labGroups.map((group) => {
+              const p = labPieces(group);
+              const { primary } = p;
+              return (
+                <Fragment key={group.key}>
+                  <tr id={`row-lab-${primary.id}`} data-row={`lab-${primary.id}`} className={`border-b border-muted hover:bg-muted/30 transition-colors ${highlightId === `lab-${primary.id}` ? 'bg-primary/10 ring-2 ring-primary/40' : ''}`}>
+                    <td className="px-4 py-3 font-semibold text-xs">{p.id}</td>
+                    <td className="px-4 py-3">{p.lab}</td>
+                    <td className="px-4 py-3">{p.equipment}</td>
+                    <td className="px-4 py-3 text-xs max-w-[200px]">{p.purpose}</td>
+                    <td className="px-4 py-3 text-xs whitespace-nowrap">{p.schedule}</td>
+                    <td className="px-4 py-3">{p.status}</td>
+                    <td className="px-4 py-3">{p.actions}</td>
+                  </tr>
+                  {p.panels.map((pn) => (
+                    <tr key={pn.key} className={pn.tr}>
+                      <td colSpan={7} className={pn.td}>{pn.node}</td>
                     </tr>
-                  )}
+                  ))}
+                </Fragment>
+              );
+            }) : (
+              <tr><td colSpan={7} className="text-center py-12 text-muted-foreground">No reservations found</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      {/* Phones: one card per reservation */}
+      <div className="md:hidden divide-y divide-muted">
+        {loading ? (
+          <div className="text-center py-12 text-muted-foreground">Loading…</div>
+        ) : labGroups.length ? labGroups.map((group) => {
+          const p = labPieces(group);
+          const { primary } = p;
+          return (
+            <div key={group.key} data-row={`lab-${primary.id}`} className={`px-4 py-4 space-y-3 ${highlightId === `lab-${primary.id}` ? 'bg-primary/10 ring-2 ring-primary/40' : ''}`}>
+              <div className="flex items-start justify-between gap-2">
+                <div className="font-semibold text-sm">{p.id}</div>
+                <div className="flex items-center gap-2">
+                  <div className="text-right">{p.status}</div>
+                  {p.actions}
+                </div>
+              </div>
+              <div className="text-sm">{p.lab}</div>
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div>
+                  <div className="text-[0.65rem] font-bold uppercase tracking-wider text-muted-foreground mb-0.5">Schedule</div>
+                  {p.schedule}
+                </div>
+                <div>
+                  <div className="text-[0.65rem] font-bold uppercase tracking-wider text-muted-foreground mb-0.5">Equipment</div>
+                  {p.equipment}
+                </div>
+              </div>
+              {primary.research_purpose && (
+                <div className="text-xs">
+                  <div className="text-[0.65rem] font-bold uppercase tracking-wider text-muted-foreground mb-0.5">Purpose</div>
+                  {p.purpose}
+                </div>
+              )}
+              {p.panels.map((pn) => (
+                <div key={pn.key} className="rounded-lg bg-primary/5 border border-primary/10 p-3">{pn.node}</div>
+              ))}
+            </div>
+          );
+        }) : (
+          <div className="text-center py-12 text-muted-foreground">No reservations found</div>
+        )}
+      </div>
+    </div>
+      )}
+
+      {activeTab === 'equipment' && (
+    <div className="bg-card rounded-xl shadow-card overflow-hidden">
+      <div className="px-6 py-4 border-b border-border flex items-center gap-2">
+        <Package className="w-4 h-4 text-primary" />
+        <h2 className="font-heading text-sm font-bold">My Equipment Reservations <span className="bg-muted text-muted-foreground px-2 py-0.5 rounded-full text-xs ml-2">{eqGroups.length}</span></h2>
+      </div>
+      <div className="hidden md:block overflow-x-auto">
+        <table className="w-full text-sm border-collapse">
+          <thead>
+            <tr className="bg-muted/50 border-b-2 border-border">
+              <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase">ID</th>
+              <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase">Equipment</th>
+              <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase">Quantity</th>
+              <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase">Schedule</th>
+              <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase">Status</th>
+              <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan={6} className="text-center py-12 text-muted-foreground">Loading…</td></tr>
+            ) : eqGroups.length ? eqGroups.map((group) => {
+              const p = eqPieces(group);
+              const { primary } = p;
+              return (
+                <Fragment key={group.key}>
+                  <tr id={`row-equipment-${primary.id}`} data-row={`equipment-${primary.id}`} className={`border-b border-muted hover:bg-muted/30 transition-colors ${highlightId === `equipment-${primary.id}` ? 'bg-primary/10 ring-2 ring-primary/40' : ''}`}>
+                    <td className="px-4 py-3 font-semibold text-xs">{p.id}</td>
+                    <td className="px-4 py-3">{p.equipment}</td>
+                    <td className="px-4 py-3 text-xs font-semibold">{p.qty}</td>
+                    <td className="px-4 py-3 text-xs whitespace-nowrap">{p.schedule}</td>
+                    <td className="px-4 py-3">{p.status}</td>
+                    <td className="px-4 py-3">{p.actions}</td>
+                  </tr>
+                  {p.panels.map((pn) => (
+                    <tr key={pn.key} className={pn.tr}>
+                      <td colSpan={6} className={pn.td}>{pn.node}</td>
+                    </tr>
+                  ))}
                 </Fragment>
               );
             }) : (
@@ -857,6 +919,42 @@ const UserReservations = () => {
             )}
           </tbody>
         </table>
+      </div>
+      {/* Phones: one card per reservation */}
+      <div className="md:hidden divide-y divide-muted">
+        {loading ? (
+          <div className="text-center py-12 text-muted-foreground">Loading…</div>
+        ) : eqGroups.length ? eqGroups.map((group) => {
+          const p = eqPieces(group);
+          const { primary } = p;
+          return (
+            <div key={group.key} data-row={`equipment-${primary.id}`} className={`px-4 py-4 space-y-3 ${highlightId === `equipment-${primary.id}` ? 'bg-primary/10 ring-2 ring-primary/40' : ''}`}>
+              <div className="flex items-start justify-between gap-2">
+                <div className="font-semibold text-sm">{p.id}</div>
+                <div className="flex items-center gap-2">
+                  <div className="text-right">{p.status}</div>
+                  {p.actions}
+                </div>
+              </div>
+              <div className="text-sm">{p.equipment}</div>
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div>
+                  <div className="text-[0.65rem] font-bold uppercase tracking-wider text-muted-foreground mb-0.5">Schedule</div>
+                  {p.schedule}
+                </div>
+                <div>
+                  <div className="text-[0.65rem] font-bold uppercase tracking-wider text-muted-foreground mb-0.5">Quantity</div>
+                  {p.qty}
+                </div>
+              </div>
+              {p.panels.map((pn) => (
+                <div key={pn.key} className="rounded-lg bg-primary/5 border border-primary/10 p-3">{pn.node}</div>
+              ))}
+            </div>
+          );
+        }) : (
+          <div className="text-center py-12 text-muted-foreground">No equipment reservations found</div>
+        )}
       </div>
     </div>
       )}

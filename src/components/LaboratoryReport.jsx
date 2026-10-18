@@ -1,24 +1,24 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Download, Search } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-
-const ACTIVE = ['reserved', 'in_use'];
-const CLOSED = ['cancelled', 'rejected'];
-
-const statusLabel = (s) => (s || '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+import { currentMonthManila, monthLabel, monthRangeISO } from '@/lib/monthRange';
+import { USED_STATUSES } from '@/lib/reportUsage';
 
 const csvCell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
 
 /**
- * Laboratory report: how often each laboratory was reserved.
- * Mirrors EquipmentReport (summary cards + search + Export CSV).
+ * Laboratory report: which laboratories were actually USED in a month.
+ * Only reservations that were used (in use / completed) are counted, and only
+ * laboratories that were used in that month are listed.
  *
  * Props:
  *  - roomIds: optional array of laboratory ids to limit the report to (staff).
+ *  - month: "YYYY-MM" - only reservations scheduled in this month are counted
+ *    (defaults to the current month). The CSV export uses the same month.
  */
-const LaboratoryReport = ({ roomIds = [] }) => {
+const LaboratoryReport = ({ roomIds = [], month = currentMonthManila() }) => {
   const [labs, setLabs] = useState([]);
-  const [usage, setUsage] = useState([]); // [{ laboratory_id, status }]
+  const [usage, setUsage] = useState([]); // [{ laboratory_id, status }] (used reservations only)
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
 
@@ -28,9 +28,15 @@ const LaboratoryReport = ({ roomIds = [] }) => {
     let cancelled = false;
     (async () => {
       setLoading(true);
+      const { startISO, endISO } = monthRangeISO(month);
       const [labRes, resRes] = await Promise.all([
-        supabase.from('laboratories').select('id, lab_name, lab_code, floor, max_capacity, status').order('lab_code'),
-        supabase.from('reservations').select('laboratory_id, status'),
+        supabase.from('laboratories').select('id, lab_name, lab_code, floor').order('lab_code'),
+        supabase
+          .from('reservations')
+          .select('laboratory_id, status')
+          .in('status', USED_STATUSES)
+          .gte('start_datetime', startISO)
+          .lt('start_datetime', endISO),
       ]);
       if (cancelled) return;
 
@@ -43,20 +49,21 @@ const LaboratoryReport = ({ roomIds = [] }) => {
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roomKey]);
+  }, [roomKey, month]);
 
+  // Only laboratories that were used this month
   const rows = useMemo(() => {
-    const map = new Map(labs.map((l) => [l.id, { ...l, total: 0, completed: 0, active: 0, pending: 0, closed: 0 }]));
+    const map = new Map(labs.map((l) => [l.id, { ...l, total: 0, completed: 0, inUse: 0 }]));
     usage.forEach((u) => {
       const row = map.get(u.laboratory_id);
       if (!row) return;
       row.total += 1;
       if (u.status === 'completed') row.completed += 1;
-      else if (ACTIVE.includes(u.status)) row.active += 1;
-      else if (u.status === 'pending') row.pending += 1;
-      else if (CLOSED.includes(u.status)) row.closed += 1;
+      else if (u.status === 'in_use') row.inUse += 1;
     });
-    return [...map.values()].sort((a, b) => b.total - a.total || a.lab_name.localeCompare(b.lab_name));
+    return [...map.values()]
+      .filter((r) => r.total > 0)
+      .sort((a, b) => b.total - a.total || a.lab_name.localeCompare(b.lab_name));
   }, [labs, usage]);
 
   const filtered = rows.filter((r) => {
@@ -66,25 +73,22 @@ const LaboratoryReport = ({ roomIds = [] }) => {
   });
 
   const totals = useMemo(() => ({
-    labs: labs.length,
-    reservations: usage.length,
+    labsUsed: rows.length,
+    uses: usage.length,
     completed: usage.filter((u) => u.status === 'completed').length,
-    active: usage.filter((u) => ACTIVE.includes(u.status)).length,
-    pending: usage.filter((u) => u.status === 'pending').length,
-    cancelled: usage.filter((u) => CLOSED.includes(u.status)).length,
-  }), [labs, usage]);
+    inUse: usage.filter((u) => u.status === 'in_use').length,
+  }), [rows, usage]);
 
   const exportCsv = () => {
-    const header = ['Laboratory', 'Lab Code', 'Floor', 'Max Capacity', 'Status', 'Total Reservations', 'Completed', 'Active', 'Pending', 'Cancelled/Rejected'];
+    const header = ['Month', 'Laboratory', 'Lab Code', 'Floor', 'Times Used', 'Completed', 'In Use'];
     const lines = filtered.map((r) => [
-      r.lab_name, r.lab_code, r.floor, r.max_capacity, statusLabel(r.status),
-      r.total, r.completed, r.active, r.pending, r.closed,
+      monthLabel(month), r.lab_name, r.lab_code, r.floor, r.total, r.completed, r.inUse,
     ].map(csvCell).join(','));
     const csv = '\uFEFF' + [header.map(csvCell).join(','), ...lines].join('\r\n');
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
     const a = document.createElement('a');
     a.href = url;
-    a.download = `laboratory-report-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `laboratory-report-${month}.csv`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -92,10 +96,10 @@ const LaboratoryReport = ({ roomIds = [] }) => {
   };
 
   const cards = [
-    { label: 'Laboratories', value: totals.labs, color: 'text-primary' },
-    { label: 'Total Reservations', value: totals.reservations, color: 'text-primary' },
+    { label: 'Laboratories Used', value: totals.labsUsed, color: 'text-primary' },
+    { label: 'Total Uses', value: totals.uses, color: 'text-primary' },
     { label: 'Completed', value: totals.completed, color: 'text-success' },
-    { label: 'Cancelled / Rejected', value: totals.cancelled, color: 'text-destructive' },
+    { label: 'In Use', value: totals.inUse, color: 'text-warning' },
   ];
 
   const th = 'px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider';
@@ -113,7 +117,7 @@ const LaboratoryReport = ({ roomIds = [] }) => {
 
       <div className="bg-card rounded-xl shadow-card overflow-hidden">
         <div className="px-6 py-4 border-b border-border flex flex-wrap items-center justify-between gap-3">
-          <h2 className="font-heading text-sm font-bold">Reservations by Laboratory</h2>
+          <h2 className="font-heading text-sm font-bold">Laboratories Used <span className="text-muted-foreground font-semibold">· {monthLabel(month)}</span></h2>
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative">
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -138,7 +142,9 @@ const LaboratoryReport = ({ roomIds = [] }) => {
         {loading ? (
           <div className="text-center py-10 text-muted-foreground">Loading…</div>
         ) : filtered.length === 0 ? (
-          <div className="text-center py-10 text-muted-foreground">No laboratories found</div>
+          <div className="text-center py-10 text-muted-foreground">
+            {search ? 'No matching laboratory' : `No laboratory was used in ${monthLabel(month)}`}
+          </div>
         ) : (
           <>
             {/* Phone: stacked cards */}
@@ -150,10 +156,9 @@ const LaboratoryReport = ({ roomIds = [] }) => {
                     {[r.lab_code, r.floor].filter(Boolean).join(' · ') || '—'}
                   </div>
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
-                    <span className="text-muted-foreground">Total: <span className="font-semibold text-foreground">{r.total}</span></span>
+                    <span className="text-muted-foreground">Used: <span className="font-semibold text-foreground">{r.total}</span></span>
                     <span className="text-success font-semibold">Completed: {r.completed}</span>
-                    <span className="text-warning font-semibold">Active: {r.active}</span>
-                    <span className="text-destructive font-semibold">Cancelled: {r.closed}</span>
+                    <span className="text-warning font-semibold">In use: {r.inUse}</span>
                   </div>
                 </div>
               ))}
@@ -166,11 +171,9 @@ const LaboratoryReport = ({ roomIds = [] }) => {
                   <tr className="bg-muted/50 border-b-2 border-border">
                     <th className={th}>Laboratory</th>
                     <th className={th}>Code</th>
-                    <th className={th}>Total</th>
+                    <th className={th}>Times Used</th>
                     <th className={th}>Completed</th>
-                    <th className={th}>Active</th>
-                    <th className={th}>Pending</th>
-                    <th className={th}>Cancelled</th>
+                    <th className={th}>In Use</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -185,9 +188,7 @@ const LaboratoryReport = ({ roomIds = [] }) => {
                       </td>
                       <td className="px-4 py-3 font-semibold">{r.total}</td>
                       <td className="px-4 py-3 text-success font-semibold">{r.completed}</td>
-                      <td className="px-4 py-3 text-warning font-semibold">{r.active}</td>
-                      <td className="px-4 py-3 text-muted-foreground font-semibold">{r.pending}</td>
-                      <td className="px-4 py-3 text-destructive font-semibold">{r.closed}</td>
+                      <td className="px-4 py-3 text-warning font-semibold">{r.inUse}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -200,4 +201,4 @@ const LaboratoryReport = ({ roomIds = [] }) => {
   );
 };
 
-export default LaboratoryReport;  
+export default LaboratoryReport;

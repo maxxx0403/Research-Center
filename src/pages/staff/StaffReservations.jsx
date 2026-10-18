@@ -10,8 +10,13 @@ import ReservationMessagesPanel from '@/components/ReservationMessagesPanel';
 import { logReservationAction } from '@/lib/activityLog';
 import RowActions from '@/components/RowActions';
 import { downloadReservationsExcel } from '@/lib/exportReservations';
+import ReservationMonthFilter from '@/components/ReservationMonthFilter';
+import { isInMonth, monthLabel, monthRangeISO } from '@/lib/monthRange';
 
 const STATUS_PRIORITY = ['rejected', 'pending', 'reserved', 'in_use', 'completed', 'cancelled'];
+
+// A submission (batch) is shown under a month when any of its items is scheduled in that month.
+const groupInMonth = (g, month) => !month || g.items.some((it) => isInMonth(it.start_datetime, month));
 
 // Groups rows submitted together (same batch_id) into one entry, so a
 // multi-lab or multi-equipment request shows up as a single row/ID in the
@@ -44,6 +49,8 @@ const StaffReservations = () => {
   const [tab, setTab] = useState('lab');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  // "YYYY-MM" (by scheduled date) or '' for all months. Also decides what the Excel export contains.
+  const [month, setMonth] = useState('');
   const [expandedMembers, setExpandedMembers] = useState({});
   const [rejectingId, setRejectingId] = useState(null);
   const [rejectionReason, setRejectionReason] = useState('');
@@ -56,19 +63,21 @@ const StaffReservations = () => {
 
   const [exportingExcel, setExportingExcel] = useState(false);
 
-  // Exports every lab + equipment reservation in this staff member's assigned rooms to one Excel file.
+  // Exports this staff member's lab + equipment reservations (assigned rooms) to one Excel file: only the selected month, or everything when "All months".
   const handleExportExcel = async () => {
     setExportingExcel(true);
     try {
+      const range = month ? monthRangeISO(month) : null;
+      const withMonth = (q) => (range ? q.gte('start_datetime', range.startISO).lt('start_datetime', range.endISO) : q);
       const [{ data: labData, error: labErr }, { data: eqData, error: eqErr }] = await Promise.all([
-        supabase
+        withMonth(supabase
           .from('reservations')
           .select('id, laboratory_id, researcher_name, email, phone, unit_college, adviser_name, study_title, stakeholder_type, status, approved_at, rejection_reason, start_datetime, end_datetime, members_list, batch_id, created_at, laboratories(id, lab_name, lab_code, floor), reservation_equipment(id, quantity_reserved, equipment(id, name, brand, model))')
-          .order('created_at', { ascending: false }),
-        supabase
+          .order('created_at', { ascending: false })),
+        withMonth(supabase
           .from('equipment_reservations')
           .select('id, researcher_name, email, purpose, quantity_reserved, start_datetime, end_datetime, status, rejection_reason, created_at, batch_id, members_list, equipment(name, brand, laboratory_id, laboratories(id, lab_code, floor))')
-          .order('created_at', { ascending: false }),
+          .order('created_at', { ascending: false })),
       ]);
       if (labErr || eqErr) throw labErr || eqErr;
 
@@ -80,7 +89,11 @@ const StaffReservations = () => {
         ? (eqData || []).filter((r) => r.equipment?.laboratory_id != null && ids.has(String(r.equipment.laboratory_id)))
         : (eqData || []);
 
-      await downloadReservationsExcel(labScoped, eqScoped);
+      if (!labScoped.length && !eqScoped.length) {
+        toast.info(month ? `No reservations found for ${monthLabel(month)}.` : 'There are no reservations to export.');
+        return;
+      }
+      await downloadReservationsExcel(labScoped, eqScoped, { month });
     } catch (err) {
       console.error('Excel export failed:', err);
       toast.error('Could not export reservations. Please try again.');
@@ -163,6 +176,7 @@ const StaffReservations = () => {
 
   const labGroups = useMemo(() => groupByBatch(labItems), [labItems]);
   const filteredLabGroups = labGroups.filter((g) => {
+    if (!groupInMonth(g, month)) return false;
     if (statusFilter && !g.items.some((it) => it.status === statusFilter)) return false;
     const term = search.toLowerCase().trim();
     if (!term) return true;
@@ -180,6 +194,7 @@ const StaffReservations = () => {
   });
   const eqGroups = useMemo(() => groupByBatch(eqItems), [eqItems]);
   const filteredEqGroups = eqGroups.filter((g) => {
+    if (!groupInMonth(g, month)) return false;
     if (statusFilter && !g.items.some((it) => it.status === statusFilter)) return false;
     const term = search.toLowerCase().trim();
     if (!term) return true;
@@ -323,6 +338,8 @@ const StaffReservations = () => {
           ))}
         </div>
 
+        <div className="flex flex-wrap items-center gap-2">
+        <ReservationMonthFilter value={month} onChange={setMonth} />
         <button
           type="button"
           onClick={handleExportExcel}
@@ -330,9 +347,16 @@ const StaffReservations = () => {
           className="inline-flex items-center gap-2 px-4 py-2 mb-2 sm:mb-2 rounded-lg text-sm font-semibold bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity self-start sm:self-auto"
         >
           <FileSpreadsheet className="w-4 h-4" />
-          {exportingExcel ? 'Exporting…' : 'Export All to Excel'}
+          {exportingExcel ? 'Exporting…' : month ? `Export ${monthLabel(month)} to Excel` : 'Export All to Excel'}
         </button>
+        </div>
       </div>
+
+      {month && (
+        <p className="text-xs text-muted-foreground -mt-2">
+          Showing reservations scheduled in <span className="font-semibold text-foreground">{monthLabel(month)}</span>. The Excel export uses the same month.
+        </p>
+      )}
 
       {tab === 'lab' && (
         <div className="bg-card rounded-xl shadow-card overflow-hidden">

@@ -100,7 +100,7 @@ const NotificationBell = ({ reservationsLink = '/user/reservations', equipmentLi
       </button>
 
       {open &&
-      <div className="absolute right-0 mt-2 w-80 max-h-[28rem] overflow-y-auto bg-card border border-border rounded-xl shadow-lg z-50">
+      <div className="fixed left-3 right-3 top-[4.25rem] sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-80 max-h-[70vh] sm:max-h-[28rem] overflow-y-auto bg-card border border-border rounded-xl shadow-lg z-50">
           <div className="px-4 py-3 border-b border-border flex items-center justify-between sticky top-0 bg-card">
             <h3 className="font-heading text-sm font-bold">Notifications</h3>
             {unreadCount > 0 &&

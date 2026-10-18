@@ -83,7 +83,7 @@ const UserDashboard = () => {
           <div className="px-6 py-4 border-b border-white/40">
             <h2 className="font-heading text-sm font-bold text-primary">Reservation Calendar</h2>
           </div>
-          <div className="p-6">
+          <div className="p-3 sm:p-6">
             <ReservationCalendarView />
           </div>
         </div>

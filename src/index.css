@@ -181,3 +181,35 @@
   --muted-foreground: 145 50% 32%;
   color: hsl(145 63% 22%);
 }
+
+/* Phones: a table inside .stack-table turns into one card per row.
+   Each cell shows its column title (data-label, set in UserLayout) above its value. */
+@media (max-width: 639px) {
+  .stack-table table,
+  .stack-table tbody { display: block; width: 100%; }
+  .stack-table thead { display: none; }
+  .stack-table tbody tr {
+    display: block;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid hsl(var(--border));
+  }
+  .stack-table tbody td {
+    display: block;
+    padding: 0.35rem 0;
+    border: 0;
+    text-align: left;
+    max-width: none;
+    white-space: normal;
+  }
+  .stack-table tbody td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 0.15rem;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: hsl(var(--muted-foreground));
+  }
+  .stack-table tbody td[colspan] { padding: 0.25rem 0; }
+}

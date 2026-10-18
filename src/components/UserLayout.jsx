@@ -21,7 +21,8 @@ const UserLayout = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, signOut, loading } = useAuth();
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  // On phones the sidebar is a drawer, so it starts closed; on desktop it starts open.
+  const [sidebarOpen, setSidebarOpen] = useState(() => typeof window === 'undefined' || window.innerWidth >= 1024);
   const [menuOpen, setMenuOpen] = useState(false);
 
   // Every page starts at the top when you switch pages (e.g. Reserve Lab -> Reserve Equipment),
@@ -29,6 +30,27 @@ const UserLayout = () => {
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
   }, [location.pathname]);
+
+  // Phones: tables marked with `stack-table` become stacked cards (see index.css).
+  // Every cell gets its column title as data-label so each value keeps its heading.
+  useEffect(() => {
+    const label = () => {
+      document.querySelectorAll('.stack-table table').forEach((table) => {
+        const heads = [...table.querySelectorAll('thead th')].map((th) => th.textContent.trim());
+        table.querySelectorAll('tbody tr').forEach((tr) => {
+          [...tr.children].forEach((td, i) => {
+            if (td.tagName !== 'TD' || td.colSpan > 1 || !heads[i]) return;
+            if (td.dataset.label !== heads[i]) td.dataset.label = heads[i];
+          });
+        });
+      });
+    };
+    label();
+    let raf;
+    const observer = new MutationObserver(() => { cancelAnimationFrame(raf); raf = requestAnimationFrame(label); });
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => { observer.disconnect(); cancelAnimationFrame(raf); };
+  }, []);
 
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center bg-muted/50"><div className="text-muted-foreground">Loading...</div></div>;
@@ -80,10 +102,10 @@ const UserLayout = () => {
       </aside>
 
       <div className={`flex-1 flex flex-col min-h-screen transition-[margin] duration-[350ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${sidebarOpen ? 'lg:ml-[260px]' : 'lg:ml-16'}`}>
-        <header className="bg-white/40 backdrop-blur-2xl backdrop-saturate-150 border-b border-white/60 px-6 py-3.5 flex justify-between items-center sticky top-0 z-30 shadow-[0_4px_24px_rgba(20,60,40,0.08)]">
-          <div className="flex items-center gap-3">
+        <header className="bg-white/40 backdrop-blur-2xl backdrop-saturate-150 border-b border-white/60 px-3 sm:px-6 py-3.5 flex justify-between items-center sticky top-0 z-30 shadow-[0_4px_24px_rgba(20,60,40,0.08)]">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <button onClick={() => setSidebarOpen(!sidebarOpen)} aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'} className="bg-transparent border-none text-foreground cursor-pointer p-1.5 rounded-lg hover:bg-muted active:scale-90 transition-all duration-200"><ChevronLeft className={`w-5 h-5 transition-transform duration-[350ms] ease-[cubic-bezier(0.22,1,0.36,1)] ${sidebarOpen ? 'rotate-0' : 'rotate-180'}`} /></button>
-            <h1 className="font-heading text-base font-bold text-foreground">{menuItems.find((m) => m.to === location.pathname)?.label || 'Research Panel'}</h1>
+            <h1 className="font-heading text-base font-bold text-foreground truncate">{menuItems.find((m) => m.to === location.pathname)?.label || 'Research Panel'}</h1>
           </div>
           <div className="flex items-center gap-3">
             <NotificationBell reservationsLink="/user/reservations" />
@@ -117,7 +139,7 @@ const UserLayout = () => {
             </div>
           </div>
         </header>
-        <main className="p-6 flex-1"><Outlet /></main>
+        <main className="p-3 sm:p-6 flex-1 min-w-0"><Outlet /></main>
       </div>
     </div>);
 
