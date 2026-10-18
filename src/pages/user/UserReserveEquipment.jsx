@@ -234,7 +234,7 @@ const UserReserveEquipment = () => {
         >
           ← Back
         </button>
-        <div className="bg-card rounded-2xl shadow-lg p-10 sm:p-14 text-center animate-fade-up">
+        <div className="bg-card rounded-2xl shadow-lg p-6 sm:p-14 text-center animate-fade-up">
           <div className="w-20 h-20 rounded-2xl bg-success/15 flex items-center justify-center mx-auto mb-6">
             <CheckCircle2 className="w-10 h-10 text-success" />
           </div>
@@ -284,7 +284,7 @@ const UserReserveEquipment = () => {
   return (
     <div className="max-w-[960px] mx-auto">
       <div className="text-center mb-8">
-        <div className="flex items-center justify-center gap-2 mb-2">
+        <div className="flex flex-wrap items-center justify-center gap-2 mb-2">
           <span className="text-xs text-muted-foreground font-semibold tracking-widest uppercase">
             UREC-QF-32
           </span>
@@ -292,7 +292,7 @@ const UserReserveEquipment = () => {
             <Hash className="w-3 h-3" /> Form Ref: {tempId}
           </span>
         </div>
-        <h1 className="font-heading text-2xl text-primary font-bold mb-1">
+        <h1 className="font-heading text-xl sm:text-2xl text-primary font-bold mb-1">
           Request to Use Equipment
         </h1>
         <p className="text-muted-foreground text-sm">
@@ -440,7 +440,7 @@ const UserReserveEquipment = () => {
           </div>
 
           <div className="mb-6">
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
               <label className="font-semibold text-sm text-foreground flex items-center gap-1.5">
                 <Users className="w-4 h-4 text-primary" />
                 List of Members / Users
@@ -454,7 +454,7 @@ const UserReserveEquipment = () => {
                 <Plus className="w-3.5 h-3.5" /> Add Member
               </button>
             </div>
-            <div className="rounded-xl border-2 !border-[color:var(--field-border)] overflow-hidden overflow-x-auto">
+            <div className="hidden md:block rounded-xl border-2 !border-[color:var(--field-border)] overflow-hidden overflow-x-auto">
               <table className="w-full text-sm min-w-[480px]">
                 <thead>
                   <tr className="bg-muted/60 border-b-2 !border-[color:var(--field-border)]">
@@ -504,10 +504,45 @@ const UserReserveEquipment = () => {
                 </tbody>
               </table>
             </div>
+            <div className="md:hidden space-y-3">
+              {members.map((member, idx) => (
+                <div key={idx} className="rounded-xl border-2 !border-[color:var(--field-border)] bg-card p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-muted-foreground uppercase">Member #{idx + 1}</span>
+                    {members.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removeMember(idx)}
+                        aria-label="Remove member"
+                        className="p-1.5 hover:bg-destructive/10 text-destructive rounded-lg transition-colors cursor-pointer"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                  <input
+                    type="text"
+                    value={member.name}
+                    onChange={(e) => updateMember(idx, 'name', e.target.value)}
+                    placeholder="Full name, e.g. Maria Santos"
+                    className="w-full px-3 py-2.5 border-2 border-border rounded-lg text-base bg-card text-foreground focus:outline-none focus:border-primary"
+                  />
+                  <input
+                    type="text"
+                    value={member.studentNumber}
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    onChange={(e) => updateMember(idx, 'studentNumber', e.target.value)}
+                    placeholder="Student number, e.g. 202302604"
+                    className="w-full px-3 py-2.5 border-2 border-border rounded-lg text-base bg-card text-foreground focus:outline-none focus:border-primary"
+                  />
+                </div>
+              ))}
+            </div>
           </div>
 
-          <div className="rounded-2xl border-2 !border-[color:var(--field-border)] bg-white/30 p-5 space-y-4">
-            <div className="flex items-center justify-between">
+          <div className="rounded-2xl border-2 !border-[color:var(--field-border)] bg-white/30 p-3 sm:p-5 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <label className="font-semibold text-sm text-foreground flex items-center gap-1.5">
                 <Package className="w-4 h-4 text-primary" />
                 Equipment to Reserve <span className="text-destructive">*</span>
@@ -525,20 +560,20 @@ const UserReserveEquipment = () => {
               {items.map((item, idx) => {
                 const eq = equipment.find((e) => e.id === item.equipmentId);
                 return (
-                  <div key={idx} className="rounded-xl border-2 !border-[color:var(--field-border)] bg-card p-4 space-y-3">
-                    <div className="flex gap-2 items-start">
+                  <div key={idx} className="rounded-xl border-2 !border-[color:var(--field-border)] bg-card p-3 sm:p-4 space-y-3">
+                    <div className="flex flex-wrap sm:flex-nowrap gap-2 items-start">
                       <FormSelect
                         value={item.equipmentId}
                         onChange={(v) => updateItemEquipment(idx, Number(v))}
                         placeholder="Select equipment…"
-                        className={inputClass + ' flex-1'}
+                        className={inputClass + ' flex-1 basis-full sm:basis-0 min-w-0'}
                         options={equipmentOptionsFor(idx).map((option) => ({
                           value: option.id,
                           label: `${option.name} — ${option.laboratories?.lab_name} (${option.laboratories?.lab_code})${option.status === 'maintenance' ? ' — Under Maintenance' : ''}`,
                           disabled: option.status === 'maintenance',
                         }))}
                       />
-                      <div className="w-28">
+                      <div className="flex-1 sm:flex-none sm:w-28">
                         <input
                           type="number"
                           min={1}
@@ -661,11 +696,11 @@ const UserReserveEquipment = () => {
         </div>
 
         {/* Submit */}
-        <div className="flex justify-end pt-6 border-t border-border">
+        <div className="flex sm:justify-end pt-6 border-t border-border">
           <button
             type="submit"
             disabled={loading}
-            className="gradient-primary text-primary-foreground px-8 py-3 rounded-xl font-bold text-base border-none cursor-pointer hover:-translate-y-0.5 hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full sm:w-auto gradient-primary text-primary-foreground px-8 py-3 rounded-xl font-bold text-base border-none cursor-pointer hover:-translate-y-0.5 hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? 'Submitting…' : 'Submit Request'}
           </button>
