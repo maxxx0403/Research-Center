@@ -141,4 +141,4 @@ const NotificationBell = ({ reservationsLink = '/user/reservations', equipmentLi
 
 };
 
-export default NotificationBell;
+export default NotificationBell;  

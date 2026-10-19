@@ -5,12 +5,13 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { NonOfficialBulk, saveNonOfficialHours } from '@/components/NonOfficialToggle';
+import { logCatalogAction } from '@/lib/activityLog';
 
 const EMPTY_EQ = { name: '', brand: '', model: '', laboratory_id: '', quantity: '1' };
 const inputCls = "w-full px-3 py-2.5 border border-border rounded-lg text-sm bg-card text-foreground focus:outline-none focus:border-primary";
 
 const StaffEquipment = () => {
-  const { assignedRoomIds } = useAuth();
+  const { user, assignedRoomIds } = useAuth();
   const [equipment, setEquipment] = useState([]);
   const [floorLabs, setFloorLabs] = useState([]); // rooms this staff member is assigned to only
   const [loading, setLoading] = useState(true);
@@ -83,11 +84,19 @@ const StaffEquipment = () => {
       const { error } = await supabase.from('equipment').update(payload).eq('id', editTarget.id);
       setSaving(false);
       if (error) { toast.error('Failed to update: ' + error.message); return; }
+      logCatalogAction({
+        userId: user?.id,
+        type: 'equipment',
+        verb: 'Updated',
+        item: payload,
+        laboratoryIds: [editTarget.laboratory_id, payload.laboratory_id],
+      });
       toast.success(`${payload.name} updated.`);
     } else {
       const { error } = await supabase.from('equipment').insert({ ...payload, status: 'available', available_quantity: qty });
       setSaving(false);
       if (error) { toast.error('Failed to add: ' + error.message); return; }
+      logCatalogAction({ userId: user?.id, type: 'equipment', verb: 'Added', item: payload, laboratoryIds: [payload.laboratory_id] });
       toast.success(`${payload.name} added.`);
     }
 

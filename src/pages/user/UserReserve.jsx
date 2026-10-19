@@ -808,10 +808,9 @@ const UserReserve = () => {
             <h4 className="font-heading text-sm font-bold text-primary uppercase tracking-wider mb-1 flex items-center gap-1.5">
               <Package className="w-4 h-4" />
               Additional Equipment
-              <span className="text-xs font-normal text-muted-foreground normal-case">(optional)</span>
             </h4>
             <p className="text-xs text-muted-foreground mb-3">
-              Optionally include specific equipment alongside your laboratory reservation.
+              Include specific equipment alongside your laboratory reservation.
             </p>
 
             {validLabs.length === 0 ? (

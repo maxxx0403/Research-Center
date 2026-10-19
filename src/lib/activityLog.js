@@ -114,3 +114,35 @@ export const logStaffAccountAction = async ({ userId, targetUserId, verb, target
     console.error('Failed to write activity log:', e);
   }
 };
+
+/**
+ * Record an admin/staff action on a laboratory or equipment catalog entry.
+ * @param {object} p
+ * @param {string} p.userId - the signed-in admin id
+ * @param {'laboratory'|'equipment'} p.type
+ * @param {'Added'|'Updated'|'Deleted'} p.verb
+ * @param {object} p.item - the saved or deleted catalog row
+ * @param {number[]} [p.laboratoryIds] - laboratories affected by the action
+ */
+export const logCatalogAction = async ({ userId, type, verb, item, laboratoryIds = [] }) => {
+  try {
+    if (!userId || !item) return;
+    const actor = await getActor(userId);
+    const label = type === 'laboratory'
+      ? `laboratory ${item.lab_name} (${item.lab_code})`
+      : `equipment ${item.name}`;
+    const action = `${type}_${verb.toLowerCase()}`;
+    const { error } = await supabase.from('activity_logs').insert({
+      action,
+      description: `${verb} ${label}`,
+      floor: item.floor || item.laboratories?.floor || null,
+      actor: actor.name,
+      actor_id: userId,
+      actor_role: actor.role,
+      laboratory_ids: [...new Set(laboratoryIds.filter((id) => id != null).map(Number))],
+    });
+    if (error) console.error('Failed to write activity log:', error);
+  } catch (e) {
+    console.error('Failed to write activity log:', e);
+  }
+};

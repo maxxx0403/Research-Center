@@ -5,6 +5,8 @@ import { toast } from 'sonner';
 import { NonOfficialBulk, saveNonOfficialHours } from '@/components/NonOfficialToggle';
 import { notifyEquipmentRemoved } from '@/lib/notifications';
 import RowActions from '@/components/RowActions';
+import { useAuth } from '@/contexts/AuthContext';
+import { logCatalogAction } from '@/lib/activityLog';
 
 const ACTIVE_STATUSES = ['pending', 'reserved', 'in_use'];
 
@@ -12,6 +14,7 @@ const EMPTY_EQ = { name: '', brand: '', model: '', laboratory_id: '', quantity: 
 const inputCls = "w-full px-3 py-2.5 border border-border rounded-lg text-sm bg-card text-foreground focus:outline-none focus:border-primary";
 
 const AdminEquipment = () => {
+  const { user } = useAuth();
   const [equipment, setEquipment] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -96,12 +99,20 @@ const AdminEquipment = () => {
       setSaving(false);
       if (error) { toast.error('Failed to update: ' + error.message); return; }
       setEquipment((prev) => prev.map((e) => e.id === editTarget.id ? data : e));
+      logCatalogAction({
+        userId: user?.id,
+        type: 'equipment',
+        verb: 'Updated',
+        item: data,
+        laboratoryIds: [editTarget.laboratory_id, data.laboratory_id],
+      });
       toast.success(`${data.name} updated successfully!`);
     } else {
       const { data, error } = await supabase.from('equipment').insert({ ...payload, status: 'available', available_quantity: qty }).select('*, laboratories(lab_name, lab_code)').single();
       setSaving(false);
       if (error) { toast.error('Failed to add: ' + error.message); return; }
       setEquipment((prev) => [...prev, data]);
+      logCatalogAction({ userId: user?.id, type: 'equipment', verb: 'Added', item: data, laboratoryIds: [data.laboratory_id] });
       toast.success(`${data.name} added successfully!`);
     }
 
@@ -121,6 +132,13 @@ const AdminEquipment = () => {
     setDeleting(false);
     if (error) { toast.error('Failed to delete: ' + error.message); return; }
     setEquipment((prev) => prev.filter((e) => e.id !== deleteTarget.id));
+    logCatalogAction({
+      userId: user?.id,
+      type: 'equipment',
+      verb: 'Deleted',
+      item: deleteTarget,
+      laboratoryIds: [deleteTarget.laboratory_id],
+    });
 
     await Promise.all([
       ...standaloneToNotify.map((r) =>

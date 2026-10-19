@@ -5,11 +5,14 @@ import StatusBadge from '@/components/StatusBadge';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import NonOfficialToggle, { NonOfficialBulk, saveNonOfficialHours } from '@/components/NonOfficialToggle';
+import { useAuth } from '@/contexts/AuthContext';
+import { logCatalogAction } from '@/lib/activityLog';
 
 const EMPTY_LAB = { lab_name: '', lab_code: '', floor: '', description: '', max_capacity: '', equipment_list: '' };
 const inputCls = "w-full px-3 py-2.5 border border-border rounded-lg text-sm bg-card text-foreground focus:outline-none focus:border-primary";
 
 const Laboratories = () => {
+  const { user } = useAuth();
   const [labs, setLabs] = useState([]);
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
@@ -65,12 +68,14 @@ const Laboratories = () => {
       setSaving(false);
       if (error) { toast.error('Failed to update: ' + error.message); return; }
       setLabs((prev) => prev.map((l) => l.id === editTarget.id ? data : l));
+      logCatalogAction({ userId: user?.id, type: 'laboratory', verb: 'Updated', item: data, laboratoryIds: [data.id] });
       toast.success(`${data.lab_name} updated successfully!`);
     } else {
       const { data, error } = await supabase.from('laboratories').insert({ ...payload, current_occupancy: 0, status: 'available' }).select().single();
       setSaving(false);
       if (error) { toast.error('Failed to add: ' + error.message); return; }
       setLabs((prev) => [...prev, data]);
+      logCatalogAction({ userId: user?.id, type: 'laboratory', verb: 'Added', item: data, laboratoryIds: [data.id] });
       toast.success(`${data.lab_name} added successfully!`);
     }
 
@@ -84,6 +89,7 @@ const Laboratories = () => {
     setDeleting(false);
     if (error) { toast.error('Failed to delete: ' + error.message); return; }
     setLabs((prev) => prev.filter((l) => l.id !== deleteTarget.id));
+    logCatalogAction({ userId: user?.id, type: 'laboratory', verb: 'Deleted', item: deleteTarget, laboratoryIds: [deleteTarget.id] });
     toast.success(`${deleteTarget.lab_name} deleted.`);
     setDeleteTarget(null);
   };
