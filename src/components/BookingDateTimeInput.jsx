@@ -26,11 +26,11 @@ const TIME_OPTIONS = (() => {
 // Same value format ("YYYY-MM-DDTHH:mm"), but the time can only be picked
 // from 7:00 AM to 6:00 PM. `min` can be a date or a datetime string.
 //
-// Layout: date and time sit side by side only when the container is wide enough
-// for both (each needs ~10.5rem); otherwise they stack. This depends on the
-// width of the container, not the screen, so it also works next to a sidebar,
-// inside modals, and on tablets. `min-w-0` stops iOS Safari's date input from
-// forcing the column wider than its container (which made fields overlap).
+// Layout: the date and the time sit side by side when there is room and wrap
+// onto two lines when the column is narrow (tablet / iPad). The date keeps at
+// least ~11.5rem (iPad Safari draws the native date control wider than desktop
+// browsers) and both fields can shrink (min-w-0), so the date never spills over
+// the time select.
 const BookingDateTimeInput = ({ value, onChange, min, required, className = '' }) => {
   const [date, setDate] = useState(value ? value.slice(0, 10) : '');
   const [time, setTime] = useState(value ? value.slice(11, 16) : '');
@@ -47,7 +47,7 @@ const BookingDateTimeInput = ({ value, onChange, min, required, className = '' }
   const options = time && !TIME_OPTIONS.includes(time) ? [time, ...TIME_OPTIONS] : TIME_OPTIONS;
 
   return (
-    <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,10.5rem),1fr))] gap-2 w-full min-w-0">
+    <div className="flex flex-wrap gap-2">
       <input
         type="date"
         value={date}
@@ -57,8 +57,7 @@ const BookingDateTimeInput = ({ value, onChange, min, required, className = '' }
           setDate(e.target.value);
           emit(e.target.value, time);
         }}
-        style={{ minWidth: 0 }}
-        className={`${className} block min-w-0 max-w-full [&::-webkit-date-and-time-value]:text-left [&::-webkit-date-and-time-value]:min-h-[1.5em]`}
+        className={`${className} min-w-0 max-w-full flex-[1_1_11.5rem]`}
       />
       <select
         value={time}
@@ -67,8 +66,7 @@ const BookingDateTimeInput = ({ value, onChange, min, required, className = '' }
           setTime(e.target.value);
           emit(date, e.target.value);
         }}
-        style={{ minWidth: 0 }}
-        className={`${className} block min-w-0 max-w-full`}
+        className={`${className} min-w-0 max-w-full flex-[1_1_9rem]`}
       >
         <option value="">Select time</option>
         {options.map((t) => (
