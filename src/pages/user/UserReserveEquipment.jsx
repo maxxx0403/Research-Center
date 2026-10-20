@@ -645,7 +645,7 @@ const UserReserveEquipment = () => {
                   <span className="font-bold">{earliestBookableLabel()}</span>.
                 </p>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                 <div>
                   <label className="block mb-1.5 font-semibold text-xs text-muted-foreground">
                     Start Date & Time
