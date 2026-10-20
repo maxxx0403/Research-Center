@@ -100,8 +100,8 @@ const NotificationBell = ({ reservationsLink = '/user/reservations', equipmentLi
       </button>
 
       {open &&
-      <div className="fixed left-3 right-3 top-[4.25rem] sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-80 max-h-[70vh] sm:max-h-[28rem] overflow-y-auto bg-card border border-border rounded-xl shadow-lg z-50">
-          <div className="px-4 py-3 border-b border-border flex items-center justify-between sticky top-0 bg-card">
+      <div className="fixed left-3 right-3 top-[4.25rem] sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-80 max-h-[70vh] sm:max-h-[28rem] overflow-y-auto bg-popover border border-border rounded-xl shadow-lg z-50">
+          <div className="px-4 py-3 border-b border-border flex items-center justify-between sticky top-0 bg-popover">
             <h3 className="font-heading text-sm font-bold">Notifications</h3>
             {unreadCount > 0 &&
           <button onClick={markAllRead} className="text-xs text-primary font-semibold bg-transparent border-none cursor-pointer inline-flex items-center gap-1 hover:underline">
@@ -118,7 +118,7 @@ const NotificationBell = ({ reservationsLink = '/user/reservations', equipmentLi
             <button
               key={n.id}
               onClick={() => handleClick(n)}
-              className={`w-full text-left px-4 py-3 border-b border-muted last:border-0 flex gap-3 items-start cursor-pointer border-none transition-colors ${n.is_read ? 'bg-card hover:bg-muted/40' : 'bg-primary/5 hover:bg-primary/10'}`}>
+              className={`w-full text-left px-4 py-3 border-b border-muted last:border-0 flex gap-3 items-start cursor-pointer border-none transition-colors ${n.is_read ? 'bg-popover hover:bg-muted/40' : 'bg-primary/5 hover:bg-primary/10'}`}>
 
                   <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${n.is_read ? 'bg-muted text-muted-foreground' : 'bg-primary/15 text-primary'}`}>
                     <Icon className="w-4 h-4" />
@@ -141,4 +141,4 @@ const NotificationBell = ({ reservationsLink = '/user/reservations', equipmentLi
 
 };
 
-export default NotificationBell;  
+export default NotificationBell;
