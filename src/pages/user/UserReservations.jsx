@@ -527,7 +527,7 @@ const UserReservations = () => {
                           <p className="text-xs text-muted-foreground -mt-2">
                             Note: a new date must be at least 1 week ({MIN_ADVANCE_DAYS} days) in advance. Earliest available date: <span className="font-semibold text-foreground">{earliestBookableLabel()}</span>.
                           </p>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,21rem),1fr))] gap-4">
                             <div>
                               <label className="block text-xs font-semibold text-muted-foreground mb-1">Start Date & Time</label>
                               <BookingDateTimeInput
@@ -697,7 +697,7 @@ x{group.totalQuantity}
                           <p className="text-xs text-muted-foreground -mt-2">
                             Note: a new date must be at least 1 week ({MIN_ADVANCE_DAYS} days) in advance. Earliest available date: <span className="font-semibold text-foreground">{earliestBookableLabel()}</span>.
                           </p>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,21rem),1fr))] gap-4">
                             <div>
                               <label className="block text-xs font-semibold text-muted-foreground mb-1">Start Date & Time</label>
                               <BookingDateTimeInput

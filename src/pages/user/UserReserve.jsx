@@ -778,7 +778,7 @@ const UserReserve = () => {
                         <span className="font-bold">{earliestBookableLabel()}</span>.
                       </p>
                     </div>
-                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,21rem),1fr))] gap-4">
                       <div>
                         <label className="block mb-1.5 font-semibold text-xs text-muted-foreground">
                           Start Date & Time
@@ -808,9 +808,10 @@ const UserReserve = () => {
             <h4 className="font-heading text-sm font-bold text-primary uppercase tracking-wider mb-1 flex items-center gap-1.5">
               <Package className="w-4 h-4" />
               Additional Equipment
+              <span className="text-xs font-normal text-muted-foreground normal-case">(optional)</span>
             </h4>
             <p className="text-xs text-muted-foreground mb-3">
-              Include specific equipment alongside your laboratory reservation.
+              Optionally include specific equipment alongside your laboratory reservation.
             </p>
 
             {validLabs.length === 0 ? (

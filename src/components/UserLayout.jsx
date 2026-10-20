@@ -101,7 +101,7 @@ const UserLayout = () => {
         </nav>
       </aside>
 
-      <div className={`flex-1 flex flex-col min-h-screen transition-[margin] duration-[350ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${sidebarOpen ? 'lg:ml-[260px]' : 'lg:ml-16'}`}>
+      <div className={`flex-1 min-w-0 flex flex-col min-h-screen transition-[margin] duration-[350ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${sidebarOpen ? 'lg:ml-[260px]' : 'lg:ml-16'}`}>
         <header className="bg-white/40 backdrop-blur-2xl backdrop-saturate-150 border-b border-white/60 px-3 sm:px-6 py-3.5 flex justify-between items-center sticky top-0 z-30 shadow-[0_4px_24px_rgba(20,60,40,0.08)]">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <button onClick={() => setSidebarOpen(!sidebarOpen)} aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'} className="bg-transparent border-none text-foreground cursor-pointer p-1.5 rounded-lg hover:bg-muted active:scale-90 transition-all duration-200"><ChevronLeft className={`w-5 h-5 transition-transform duration-[350ms] ease-[cubic-bezier(0.22,1,0.36,1)] ${sidebarOpen ? 'rotate-0' : 'rotate-180'}`} /></button>
