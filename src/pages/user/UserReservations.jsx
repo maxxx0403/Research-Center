@@ -1,10 +1,11 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Edit2, Trash2, X, Check, ChevronDown, ChevronUp, Package, FlaskConical, FileDown, MessageSquare } from 'lucide-react';
+import { Edit2, Trash2, X, Check, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Package, FlaskConical, FileDown, MessageSquare } from 'lucide-react';
 
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import StatusBadge from '@/components/StatusBadge';
+import ReservationMonthFilter from '@/components/ReservationMonthFilter';
 import RowActions from '@/components/RowActions';
 import RejectionNote from '@/components/RejectionNote';
 import BookingDateTimeInput from '@/components/BookingDateTimeInput';
@@ -18,6 +19,7 @@ import {
 import { downloadRequestForm, downloadLabBatchRequestForm, downloadEquipmentRequestForm } from '@/lib/generateRequestForm';
 import ReservationMessagesPanel from '@/components/ReservationMessagesPanel';
 import { earliestBookableInput, earliestBookableLabel, manilaInputToISO, toManilaInputValue, validateBookingDateTime, MIN_ADVANCE_DAYS } from '@/lib/timezone';
+import { isInMonth } from '@/lib/monthRange';
 
 // Statuses a reservation can still be edited/cancelled from.
 // Only pending or rejected reservations can be edited. Once approved ('reserved') it is locked.
@@ -26,6 +28,12 @@ const EDITABLE_STATUSES = ['pending', 'rejected'];
 // equipment rows that don't all share the same status (e.g. admin approved
 // one item in the batch but rejected another).
 const STATUS_PRIORITY = ['rejected', 'pending', 'reserved', 'in_use', 'completed', 'cancelled'];
+const RESERVATIONS_PER_PAGE = 15;
+const filterReservationGroups = (groups, statusFilter, monthFilter) =>
+  groups.filter((group) =>
+    (!statusFilter || group.status === statusFilter) &&
+    (!monthFilter || group.items.some((item) => isInMonth(item.start_datetime, monthFilter)))
+  );
 
 const UserReservations = () => {
   const { user } = useAuth();
@@ -43,6 +51,9 @@ const UserReservations = () => {
   const [expandedEqGroups, setExpandedEqGroups] = useState({});
   const [expandedLabGroups, setExpandedLabGroups] = useState({});
   const [activeTab, setActiveTab] = useState('lab');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [monthFilter, setMonthFilter] = useState('');
+  const [page, setPage] = useState(1);
   const [editingEqKey, setEditingEqKey] = useState(null);
   const [editEqData, setEditEqData] = useState({});
   const [savingEq, setSavingEq] = useState(false);
@@ -99,6 +110,21 @@ const UserReservations = () => {
     });
   }, [reservations]);
 
+  const filteredLabGroups = useMemo(
+    () => filterReservationGroups(labGroups, statusFilter, monthFilter),
+    [labGroups, statusFilter, monthFilter]
+  );
+  const filteredEqGroups = useMemo(
+    () => filterReservationGroups(eqGroups, statusFilter, monthFilter),
+    [eqGroups, statusFilter, monthFilter]
+  );
+  const visibleGroups = activeTab === 'lab' ? filteredLabGroups : filteredEqGroups;
+  const pageCount = Math.max(1, Math.ceil(visibleGroups.length / RESERVATIONS_PER_PAGE));
+  const currentPage = Math.min(page, pageCount);
+  const pageStart = (currentPage - 1) * RESERVATIONS_PER_PAGE;
+  const paginatedLabGroups = filteredLabGroups.slice(pageStart, pageStart + RESERVATIONS_PER_PAGE);
+  const paginatedEqGroups = filteredEqGroups.slice(pageStart, pageStart + RESERVATIONS_PER_PAGE);
+
   const fetchData = async () => {
     const [labRes, eqRes] = await Promise.all([
       supabase
@@ -130,10 +156,15 @@ const UserReservations = () => {
     const list = type === 'lab' ? reservations : eqReservations;
     const item = list.find((r) => r.id === id);
     if (item) {
+      const groups = type === 'lab' ? labGroups : eqGroups;
+      const groupIndex = groups.findIndex((group) => group.ids.includes(id));
       const label = type === 'lab' ? `Reservation #RC${String(id).padStart(5, '0')}` : `Equipment request #EQ${String(id).padStart(5, '0')}`;
       setMessagingItem({ type, id, label, reason: item.rejection_reason });
       setHighlightId(`${type}-${id}`);
       setActiveTab(type === 'lab' ? 'lab' : 'equipment');
+      setStatusFilter('');
+      setMonthFilter('');
+      setPage(Math.floor(Math.max(groupIndex, 0) / RESERVATIONS_PER_PAGE) + 1);
       setTimeout(() => {
         [...document.querySelectorAll(`[data-row="${type}-${id}"]`), document.getElementById(`row-${type}-${id}`)]
           .filter(Boolean).find((el) => el.offsetParent !== null)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -768,7 +799,7 @@ x{group.totalQuantity}
           <button
             key={t.key}
             type="button"
-            onClick={() => setActiveTab(t.key)}
+            onClick={() => { setActiveTab(t.key); setPage(1); }}
             className={`inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold bg-transparent border-t-0 border-x-0 border-b-2 -mb-px cursor-pointer transition-colors ${activeTab === t.key ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
           >
             <t.icon className="w-4 h-4" /> {t.label}
@@ -781,9 +812,33 @@ x{group.totalQuantity}
 
       {activeTab === 'lab' && (
     <div className="bg-card rounded-xl shadow-card overflow-hidden">
-      <div className="px-6 py-4 border-b border-border flex items-center gap-2">
-        <FlaskConical className="w-4 h-4 text-primary" />
-        <h2 className="font-heading text-sm font-bold">My Lab Reservations <span className="bg-muted text-muted-foreground px-2 py-0.5 rounded-full text-xs ml-2">{labGroups.length}</span></h2>
+      <div className="px-4 sm:px-6 py-4 border-b border-border flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-2">
+          <FlaskConical className="w-4 h-4 text-primary" />
+          <h2 className="font-heading text-sm font-bold">My Lab Reservations <span className="bg-muted text-muted-foreground px-2 py-0.5 rounded-full text-xs ml-2">{filteredLabGroups.length}</span></h2>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+            Status
+            <select
+              aria-label="Filter lab reservations by status"
+              value={statusFilter}
+              onChange={(event) => { setStatusFilter(event.target.value); setPage(1); }}
+              className="px-3 py-2 rounded-lg border border-border bg-card text-sm font-semibold text-foreground"
+            >
+              <option value="">All statuses</option>
+              {STATUS_PRIORITY.map((status) => (
+                <option key={status} value={status}>
+                  {status.replace('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())}
+                </option>
+              ))}
+            </select>
+          </label>
+          <ReservationMonthFilter
+            value={monthFilter}
+            onChange={(value) => { setMonthFilter(value); setPage(1); }}
+          />
+        </div>
       </div>
       <div className="hidden md:block overflow-x-auto">
         <table className="w-full text-sm border-collapse">
@@ -801,7 +856,7 @@ x{group.totalQuantity}
           <tbody>
             {loading ? (
               <tr><td colSpan={7} className="text-center py-12 text-muted-foreground">Loading…</td></tr>
-            ) : labGroups.length ? labGroups.map((group) => {
+            ) : paginatedLabGroups.length ? paginatedLabGroups.map((group) => {
               const p = labPieces(group);
               const { primary } = p;
               return (
@@ -832,7 +887,7 @@ x{group.totalQuantity}
       <div className="md:hidden divide-y divide-muted">
         {loading ? (
           <div className="text-center py-12 text-muted-foreground">Loading…</div>
-        ) : labGroups.length ? labGroups.map((group) => {
+        ) : paginatedLabGroups.length ? paginatedLabGroups.map((group) => {
           const p = labPieces(group);
           const { primary } = p;
           return (
@@ -870,14 +925,66 @@ x{group.totalQuantity}
           <div className="text-center py-12 text-muted-foreground">No reservations found</div>
         )}
       </div>
+      {filteredLabGroups.length > 0 && (
+        <div className="px-4 sm:px-6 py-3 border-t border-border flex flex-wrap items-center justify-between gap-3 text-sm">
+          <span className="text-muted-foreground">
+            Showing {pageStart + 1}–{Math.min(pageStart + RESERVATIONS_PER_PAGE, filteredLabGroups.length)} of {filteredLabGroups.length}
+          </span>
+          {filteredLabGroups.length > RESERVATIONS_PER_PAGE && (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setPage((current) => Math.max(1, current - 1))}
+                disabled={currentPage === 1}
+                className="inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-border bg-card text-foreground font-semibold disabled:opacity-50 disabled:cursor-not-allowed hover:bg-muted"
+              >
+                <ChevronLeft className="w-4 h-4" /> Previous
+              </button>
+              <span className="text-muted-foreground">{currentPage} / {pageCount}</span>
+              <button
+                type="button"
+                onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
+                disabled={currentPage === pageCount}
+                className="inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-border bg-card text-foreground font-semibold disabled:opacity-50 disabled:cursor-not-allowed hover:bg-muted"
+              >
+                Next <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+        </div>
+      )}
     </div>
       )}
 
       {activeTab === 'equipment' && (
     <div className="bg-card rounded-xl shadow-card overflow-hidden">
-      <div className="px-6 py-4 border-b border-border flex items-center gap-2">
-        <Package className="w-4 h-4 text-primary" />
-        <h2 className="font-heading text-sm font-bold">My Equipment Reservations <span className="bg-muted text-muted-foreground px-2 py-0.5 rounded-full text-xs ml-2">{eqGroups.length}</span></h2>
+      <div className="px-4 sm:px-6 py-4 border-b border-border flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-2">
+          <Package className="w-4 h-4 text-primary" />
+          <h2 className="font-heading text-sm font-bold">My Equipment Reservations <span className="bg-muted text-muted-foreground px-2 py-0.5 rounded-full text-xs ml-2">{filteredEqGroups.length}</span></h2>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+            Status
+            <select
+              aria-label="Filter equipment reservations by status"
+              value={statusFilter}
+              onChange={(event) => { setStatusFilter(event.target.value); setPage(1); }}
+              className="px-3 py-2 rounded-lg border border-border bg-card text-sm font-semibold text-foreground"
+            >
+              <option value="">All statuses</option>
+              {STATUS_PRIORITY.map((status) => (
+                <option key={status} value={status}>
+                  {status.replace('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())}
+                </option>
+              ))}
+            </select>
+          </label>
+          <ReservationMonthFilter
+            value={monthFilter}
+            onChange={(value) => { setMonthFilter(value); setPage(1); }}
+          />
+        </div>
       </div>
       <div className="hidden md:block overflow-x-auto">
         <table className="w-full text-sm border-collapse">
@@ -894,7 +1001,7 @@ x{group.totalQuantity}
           <tbody>
             {loading ? (
               <tr><td colSpan={6} className="text-center py-12 text-muted-foreground">Loading…</td></tr>
-            ) : eqGroups.length ? eqGroups.map((group) => {
+            ) : paginatedEqGroups.length ? paginatedEqGroups.map((group) => {
               const p = eqPieces(group);
               const { primary } = p;
               return (
@@ -924,7 +1031,7 @@ x{group.totalQuantity}
       <div className="md:hidden divide-y divide-muted">
         {loading ? (
           <div className="text-center py-12 text-muted-foreground">Loading…</div>
-        ) : eqGroups.length ? eqGroups.map((group) => {
+        ) : paginatedEqGroups.length ? paginatedEqGroups.map((group) => {
           const p = eqPieces(group);
           const { primary } = p;
           return (
@@ -956,6 +1063,34 @@ x{group.totalQuantity}
           <div className="text-center py-12 text-muted-foreground">No equipment reservations found</div>
         )}
       </div>
+      {filteredEqGroups.length > 0 && (
+        <div className="px-4 sm:px-6 py-3 border-t border-border flex flex-wrap items-center justify-between gap-3 text-sm">
+          <span className="text-muted-foreground">
+            Showing {pageStart + 1}–{Math.min(pageStart + RESERVATIONS_PER_PAGE, filteredEqGroups.length)} of {filteredEqGroups.length}
+          </span>
+          {filteredEqGroups.length > RESERVATIONS_PER_PAGE && (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setPage((current) => Math.max(1, current - 1))}
+                disabled={currentPage === 1}
+                className="inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-border bg-card text-foreground font-semibold disabled:opacity-50 disabled:cursor-not-allowed hover:bg-muted"
+              >
+                <ChevronLeft className="w-4 h-4" /> Previous
+              </button>
+              <span className="text-muted-foreground">{currentPage} / {pageCount}</span>
+              <button
+                type="button"
+                onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
+                disabled={currentPage === pageCount}
+                className="inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-border bg-card text-foreground font-semibold disabled:opacity-50 disabled:cursor-not-allowed hover:bg-muted"
+              >
+                Next <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+        </div>
+      )}
     </div>
       )}
 

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, Fragment } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Check, X, Trash2, AlertCircle, FlaskConical, Package, Users, ChevronDown, ChevronUp, FileDown, MessageSquare, FileSpreadsheet, RefreshCw } from 'lucide-react';
+import { Check, X, Trash2, AlertCircle, FlaskConical, Package, Users, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, FileDown, MessageSquare, FileSpreadsheet, RefreshCw } from 'lucide-react';
 import RowActions from '@/components/RowActions';
 import StatusBadge from '@/components/StatusBadge';
 import { supabase } from '@/integrations/supabase/client';
@@ -16,6 +16,41 @@ import { isInMonth, monthLabel, monthRangeISO } from '@/lib/monthRange';
 
 const STATUS_PRIORITY = ['rejected', 'pending', 'reserved', 'in_use', 'completed', 'cancelled'];
 const STATUS_VERBS = { reserved: 'Accepted', rejected: 'Rejected', cancelled: 'Cancelled', in_use: 'Marked in use:', completed: 'Marked completed:', pending: 'Set back to pending:' };
+const RESERVATIONS_PER_PAGE = 15;
+
+const ReservationsPagination = ({ count, page, onPageChange }) => {
+  if (!count) return null;
+  const pageCount = Math.ceil(count / RESERVATIONS_PER_PAGE);
+  const start = (page - 1) * RESERVATIONS_PER_PAGE;
+  return (
+    <div className="px-4 sm:px-6 py-3 border-t border-border flex flex-wrap items-center justify-between gap-3 text-sm">
+      <span className="text-muted-foreground">
+        Showing {start + 1}–{Math.min(start + RESERVATIONS_PER_PAGE, count)} of {count}
+      </span>
+      {pageCount > 1 && (
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => onPageChange(Math.max(1, page - 1))}
+            disabled={page === 1}
+            className="inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-border bg-card text-foreground font-semibold disabled:opacity-50 disabled:cursor-not-allowed hover:bg-muted"
+          >
+            <ChevronLeft className="w-4 h-4" /> Previous
+          </button>
+          <span className="text-muted-foreground">{page} / {pageCount}</span>
+          <button
+            type="button"
+            onClick={() => onPageChange(Math.min(pageCount, page + 1))}
+            disabled={page === pageCount}
+            className="inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-border bg-card text-foreground font-semibold disabled:opacity-50 disabled:cursor-not-allowed hover:bg-muted"
+          >
+            Next <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
 
 // A submission (batch) is shown under a month when any of its items is scheduled in that month.
 const groupInMonth = (g, month) => !month || g.items.some((it) => isInMonth(it.start_datetime, month));
@@ -51,6 +86,7 @@ const Reservations = () => {
   const [highlightId, setHighlightId] = useState(null);
   // "YYYY-MM" (by scheduled date) or '' for all months. Also decides what the Excel export contains.
   const [month, setMonth] = useState('');
+  const [page, setPage] = useState(1);
 
   // Laboratory reservations state
   const [labItems, setLabItems] = useState([]);
@@ -135,10 +171,21 @@ const Reservations = () => {
     const list = type === 'lab' ? labItems : eqItems;
     const item = list.find((r) => r.id === id);
     if (item) {
+      const groups = groupByBatch(list);
+      const groupIndex = groups.findIndex((group) => group.ids.includes(id));
       const label = type === 'lab' ? `Reservation #RC${String(id).padStart(5, '0')}` : `Equipment request #EQ${String(id).padStart(5, '0')}`;
       setMessagingItem({ type, id, label, reason: item.rejection_reason });
       setHighlightId(`${type}-${id}`);
       setTab(type === 'lab' ? 'lab' : 'equipment');
+      setMonth('');
+      if (type === 'lab') {
+        setLabSearch('');
+        setLabFilterStatus('');
+      } else {
+        setEqSearch('');
+        setEqFilterStatus('');
+      }
+      setPage(Math.floor(Math.max(groupIndex, 0) / RESERVATIONS_PER_PAGE) + 1);
       setTimeout(() => {
         document.getElementById(`row-${type}-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }, 100);
@@ -184,10 +231,16 @@ const Reservations = () => {
     const matchStatus = !eqFilterStatus || g.items.some((it) => it.status === eqFilterStatus);
     return matchSearch && matchStatus;
   });
+  const pageCount = Math.max(1, Math.ceil((tab === 'lab' ? filteredLabGroups : filteredEqGroups).length / RESERVATIONS_PER_PAGE));
+  const currentPage = Math.min(page, pageCount);
+  const pageStart = (currentPage - 1) * RESERVATIONS_PER_PAGE;
+  const paginatedLabGroups = filteredLabGroups.slice(pageStart, pageStart + RESERVATIONS_PER_PAGE);
+  const paginatedEqGroups = filteredEqGroups.slice(pageStart, pageStart + RESERVATIONS_PER_PAGE);
 
   const handleResetLab = () => {
     setLabSearch('');
     setLabFilterStatus('');
+    setPage(1);
     setLabLoading(true);
     fetchLabData();
   };
@@ -195,6 +248,7 @@ const Reservations = () => {
   const handleResetEq = () => {
     setEqSearch('');
     setEqFilterStatus('');
+    setPage(1);
     setEqLoading(true);
     fetchEqData();
   };
@@ -355,7 +409,7 @@ const Reservations = () => {
             <button
               key={t.key}
               type="button"
-              onClick={() => setTab(t.key)}
+              onClick={() => { setTab(t.key); setPage(1); }}
               className={`inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold bg-transparent border-t-0 border-x-0 border-b-2 -mb-px cursor-pointer transition-colors ${tab === t.key ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
             >
               <t.icon className="w-4 h-4" /> {t.label}
@@ -367,7 +421,7 @@ const Reservations = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-        <ReservationMonthFilter value={month} onChange={setMonth} />
+        <ReservationMonthFilter value={month} onChange={(value) => { setMonth(value); setPage(1); }} />
         <button
           onClick={handleExportExcel}
           disabled={exportingExcel || labLoading || eqLoading}
@@ -393,11 +447,11 @@ const Reservations = () => {
           <div className="flex flex-wrap gap-3 items-end">
             <div className="flex-1 min-w-[180px]">
               <label className="block text-xs font-semibold text-muted-foreground mb-1">Search</label>
-              <input value={labSearch} onChange={(e) => setLabSearch(e.target.value)} placeholder="Name / email…" className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-card text-foreground focus:outline-none focus:border-primary" />
+              <input value={labSearch} onChange={(e) => { setLabSearch(e.target.value); setPage(1); }} placeholder="Name / email…" className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-card text-foreground focus:outline-none focus:border-primary" />
             </div>
             <div className="min-w-[140px]">
               <label className="block text-xs font-semibold text-muted-foreground mb-1">Status</label>
-              <select value={labFilterStatus} onChange={(e) => setLabFilterStatus(e.target.value)} className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-card text-foreground">
+              <select value={labFilterStatus} onChange={(e) => { setLabFilterStatus(e.target.value); setPage(1); }} className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-card text-foreground">
                 <option value="">All</option>
                 {['pending', 'reserved', 'in_use', 'completed', 'cancelled', 'rejected'].map((s) => (
                   <option key={s} value={s}>{s.replace('_', ' ')}</option>
@@ -432,7 +486,7 @@ const Reservations = () => {
               <tbody>
                 {labLoading ? (
                   <tr><td colSpan={8} className="text-center py-12 text-muted-foreground">Loading…</td></tr>
-                ) : filteredLabGroups.length ? filteredLabGroups.map((group) => {
+                ) : paginatedLabGroups.length ? paginatedLabGroups.map((group) => {
                   const r = group.primary;
                   const isBatch = group.items.length > 1;
                   const isGroupExpanded = expandedLabGroups[group.key];
@@ -614,6 +668,7 @@ const Reservations = () => {
               </tbody>
             </table>
           </div>
+            <ReservationsPagination count={filteredLabGroups.length} page={currentPage} onPageChange={setPage} />
         </div>
       </div>
       )}
@@ -627,11 +682,11 @@ const Reservations = () => {
           <div className="flex flex-wrap gap-3 items-end">
             <div className="flex-1 min-w-[180px]">
               <label className="block text-xs font-semibold text-muted-foreground mb-1">Search</label>
-              <input value={eqSearch} onChange={(e) => setEqSearch(e.target.value)} placeholder="Researcher or equipment…" className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-card text-foreground focus:outline-none focus:border-primary" />
+              <input value={eqSearch} onChange={(e) => { setEqSearch(e.target.value); setPage(1); }} placeholder="Researcher or equipment…" className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-card text-foreground focus:outline-none focus:border-primary" />
             </div>
             <div className="min-w-[140px]">
               <label className="block text-xs font-semibold text-muted-foreground mb-1">Status</label>
-              <select value={eqFilterStatus} onChange={(e) => setEqFilterStatus(e.target.value)} className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-card text-foreground">
+              <select value={eqFilterStatus} onChange={(e) => { setEqFilterStatus(e.target.value); setPage(1); }} className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-card text-foreground">
                 <option value="">All</option>
                 {['pending', 'reserved', 'in_use', 'completed', 'cancelled', 'rejected'].map((s) => (
                   <option key={s} value={s}>{s.replace('_', ' ')}</option>
@@ -665,7 +720,7 @@ const Reservations = () => {
               <tbody>
                 {eqLoading ? (
                   <tr><td colSpan={7} className="text-center py-12 text-muted-foreground">Loading…</td></tr>
-                ) : filteredEqGroups.length ? filteredEqGroups.map((group) => {
+                ) : paginatedEqGroups.length ? paginatedEqGroups.map((group) => {
                   const r = group.primary;
                   const isBatch = group.items.length > 1;
                   const isGroupExpanded = expandedEqGroups[group.key];
@@ -782,6 +837,7 @@ const Reservations = () => {
               </tbody>
             </table>
           </div>
+          <ReservationsPagination count={filteredEqGroups.length} page={currentPage} onPageChange={setPage} />
         </div>
       </div>
       )}

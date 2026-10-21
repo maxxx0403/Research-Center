@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, Fragment } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Search, Users, Check, X, MessageSquare, FlaskConical, Package, ChevronDown, ChevronUp, FileSpreadsheet } from 'lucide-react';
+import { Search, Users, Check, X, MessageSquare, FlaskConical, Package, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, FileSpreadsheet } from 'lucide-react';
 import StatusBadge from '@/components/StatusBadge';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -14,6 +14,41 @@ import ReservationMonthFilter from '@/components/ReservationMonthFilter';
 import { isInMonth, monthLabel, monthRangeISO } from '@/lib/monthRange';
 
 const STATUS_PRIORITY = ['rejected', 'pending', 'reserved', 'in_use', 'completed', 'cancelled'];
+const RESERVATIONS_PER_PAGE = 15;
+
+const ReservationsPagination = ({ count, page, onPageChange }) => {
+  if (!count) return null;
+  const pageCount = Math.ceil(count / RESERVATIONS_PER_PAGE);
+  const start = (page - 1) * RESERVATIONS_PER_PAGE;
+  return (
+    <div className="px-4 sm:px-6 py-3 border-t border-border flex flex-wrap items-center justify-between gap-3 text-sm">
+      <span className="text-muted-foreground">
+        Showing {start + 1}–{Math.min(start + RESERVATIONS_PER_PAGE, count)} of {count}
+      </span>
+      {pageCount > 1 && (
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => onPageChange(Math.max(1, page - 1))}
+            disabled={page === 1}
+            className="inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-border bg-card text-foreground font-semibold disabled:opacity-50 disabled:cursor-not-allowed hover:bg-muted"
+          >
+            <ChevronLeft className="w-4 h-4" /> Previous
+          </button>
+          <span className="text-muted-foreground">{page} / {pageCount}</span>
+          <button
+            type="button"
+            onClick={() => onPageChange(Math.min(pageCount, page + 1))}
+            disabled={page === pageCount}
+            className="inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-border bg-card text-foreground font-semibold disabled:opacity-50 disabled:cursor-not-allowed hover:bg-muted"
+          >
+            Next <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
 
 // A submission (batch) is shown under a month when any of its items is scheduled in that month.
 const groupInMonth = (g, month) => !month || g.items.some((it) => isInMonth(it.start_datetime, month));
@@ -51,6 +86,7 @@ const StaffReservations = () => {
   const [statusFilter, setStatusFilter] = useState('');
   // "YYYY-MM" (by scheduled date) or '' for all months. Also decides what the Excel export contains.
   const [month, setMonth] = useState('');
+  const [page, setPage] = useState(1);
   const [expandedMembers, setExpandedMembers] = useState({});
   const [rejectingId, setRejectingId] = useState(null);
   const [rejectionReason, setRejectionReason] = useState('');
@@ -162,10 +198,16 @@ const StaffReservations = () => {
     const list = type === 'lab' ? labItems : eqItems;
     const item = list.find((r) => r.id === id);
     if (item) {
+      const groups = groupByBatch(list);
+      const groupIndex = groups.findIndex((group) => group.ids.includes(id));
       const label = type === 'lab' ? `Reservation #RC${String(id).padStart(5, '0')}` : `Equipment request #EQ${String(id).padStart(5, '0')}`;
       setMessagingItem({ type, id, label, reason: item.rejection_reason });
       setHighlightId(`${type}-${id}`);
       setTab(type === 'lab' ? 'lab' : 'equipment');
+      setSearch('');
+      setStatusFilter('');
+      setMonth('');
+      setPage(Math.floor(Math.max(groupIndex, 0) / RESERVATIONS_PER_PAGE) + 1);
       setTimeout(() => {
         document.getElementById(`row-${type}-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }, 100);
@@ -207,6 +249,11 @@ const StaffReservations = () => {
       g.items.some((it) => (it.equipment?.name || '').toLowerCase().includes(term))
     );
   });
+  const pageCount = Math.max(1, Math.ceil((tab === 'lab' ? filteredLabGroups : filteredEqGroups).length / RESERVATIONS_PER_PAGE));
+  const currentPage = Math.min(page, pageCount);
+  const pageStart = (currentPage - 1) * RESERVATIONS_PER_PAGE;
+  const paginatedLabGroups = filteredLabGroups.slice(pageStart, pageStart + RESERVATIONS_PER_PAGE);
+  const paginatedEqGroups = filteredEqGroups.slice(pageStart, pageStart + RESERVATIONS_PER_PAGE);
 
   const fmt = (d) => new Date(d).toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
@@ -292,11 +339,11 @@ const StaffReservations = () => {
         <div className="flex flex-wrap gap-3 items-end">
           <div className="flex-1 min-w-[180px]">
             <label className="block text-xs font-semibold text-muted-foreground mb-1">Search</label>
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Name / email…" className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-card text-foreground focus:outline-none focus:border-primary" />
+            <input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Name / email…" className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-card text-foreground focus:outline-none focus:border-primary" />
           </div>
           <div className="min-w-[140px]">
             <label className="block text-xs font-semibold text-muted-foreground mb-1">Status</label>
-            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-card text-foreground">
+            <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }} className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-card text-foreground">
               <option value="">All</option>
               {['pending', 'reserved', 'in_use', 'completed', 'cancelled', 'rejected'].map((st) => (
                 <option key={st} value={st}>{st.replace('_', ' ')}</option>
@@ -308,6 +355,7 @@ const StaffReservations = () => {
             onClick={async () => {
               setSearch('');
               setStatusFilter('');
+              setPage(1);
               if (refreshRole) await refreshRole();
               loadData();
             }}
@@ -327,7 +375,7 @@ const StaffReservations = () => {
             <button
               key={t.key}
               type="button"
-              onClick={() => setTab(t.key)}
+              onClick={() => { setTab(t.key); setPage(1); }}
               className={`inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold bg-transparent border-t-0 border-x-0 border-b-2 -mb-px cursor-pointer transition-colors ${tab === t.key ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
             >
               <t.icon className="w-4 h-4" /> {t.label}
@@ -339,7 +387,7 @@ const StaffReservations = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-        <ReservationMonthFilter value={month} onChange={setMonth} />
+        <ReservationMonthFilter value={month} onChange={(value) => { setMonth(value); setPage(1); }} />
         <button
           type="button"
           onClick={handleExportExcel}
@@ -383,7 +431,7 @@ const StaffReservations = () => {
                 <tr><td colSpan={7} className="text-center py-10 text-muted-foreground text-xs">Loading...</td></tr>
               ) : filteredLabGroups.length === 0 ? (
                 <tr><td colSpan={7} className="text-center py-10 text-muted-foreground text-xs">No reservations found.</td></tr>
-              ) : filteredLabGroups.map((group) => {
+              ) : paginatedLabGroups.map((group) => {
                 const r = group.primary;
                 const isBatch = group.items.length > 1;
                 const isGroupExpanded = expandedLabGroups[group.key];
@@ -493,6 +541,7 @@ const StaffReservations = () => {
             </tbody>
           </table>
           </div>
+          <ReservationsPagination count={filteredLabGroups.length} page={currentPage} onPageChange={setPage} />
         </div>
       )}
 
@@ -521,7 +570,7 @@ const StaffReservations = () => {
                 <tr><td colSpan={7} className="text-center py-10 text-muted-foreground text-xs">Loading...</td></tr>
               ) : filteredEqGroups.length === 0 ? (
                 <tr><td colSpan={7} className="text-center py-10 text-muted-foreground text-xs">No equipment reservations found.</td></tr>
-              ) : filteredEqGroups.map((group) => {
+              ) : paginatedEqGroups.map((group) => {
                 const r = group.primary;
                 const isBatch = group.items.length > 1;
                 const isGroupExpanded = expandedEqGroups[group.key];
@@ -629,6 +678,7 @@ const StaffReservations = () => {
             </tbody>
           </table>
           </div>
+          <ReservationsPagination count={filteredEqGroups.length} page={currentPage} onPageChange={setPage} />
         </div>
       )}
 
