@@ -603,7 +603,7 @@ const Reservations = () => {
                             icon: RefreshCw,
                             hidden: group.status === 'pending',
                             value: group.status,
-                            options: ['pending', 'reserved', 'in_use', 'completed', 'cancelled'].map((st) => ({ value: st, label: st.replace('_', ' ').replace(/^\w/, (c) => c.toUpperCase()) })),
+                            options: ['reserved', 'in_use', 'completed', 'cancelled'].map((st) => ({ value: st, label: st.replace('_', ' ').replace(/^\w/, (c) => c.toUpperCase()) })),
                             onChange: (v) => updateLabStatusBatch(group.ids, v),
                           },
                           {
@@ -796,7 +796,7 @@ const Reservations = () => {
                             icon: RefreshCw,
                             hidden: group.status === 'pending',
                             value: group.status,
-                            options: ['pending', 'reserved', 'in_use', 'completed', 'cancelled'].map((st) => ({ value: st, label: st.replace('_', ' ').replace(/^\w/, (c) => c.toUpperCase()) })),
+                            options: ['reserved', 'in_use', 'completed', 'cancelled'].map((st) => ({ value: st, label: st.replace('_', ' ').replace(/^\w/, (c) => c.toUpperCase()) })),
                             onChange: (v) => updateEqStatusBatch(group.ids, v),
                           },
                           {

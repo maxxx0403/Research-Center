@@ -5,6 +5,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import BookingDateTimeInput from '@/components/BookingDateTimeInput';
 import FormSelect from '@/components/FormSelect';
+import { getStakeholderConfig } from '@/lib/stakeholder';
 import {
   checkLabReservationConflict,
   checkEquipmentAvailability,
@@ -38,7 +39,10 @@ const UserReserve = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [reservationId, setReservationId] = useState(0);
-  const [stakeholderType, setStakeholderType] = useState('');
+  const [stakeholderChoice, setStakeholderChoice] = useState('');
+  const { options: stakeholderOptions, autoValue: autoStakeholder } = getStakeholderConfig(user?.email);
+  // Non-CvSU emails (e.g. gmail.com) are auto-set; CvSU emails choose Student / Faculty.
+  const stakeholderType = autoStakeholder || stakeholderChoice;
   const [members, setMembers] = useState([{ name: '', studentNumber: '' }]);
 
   useEffect(() => {
@@ -362,7 +366,7 @@ const UserReserve = () => {
     setReservationId(0);
     setSelectedEquipments([]);
     setSelectedLabs([{ labId: 0, startDatetime: '', endDatetime: '' }]);
-    setStakeholderType('');
+    setStakeholderChoice('');
     setMembers([{ name: '' }]);
     setError('');
   };
@@ -411,12 +415,6 @@ const UserReserve = () => {
       </div>
     );
   }
-
-  const stakeholderOptions = [
-    { value: 'student', label: 'Student' },
-    { value: 'faculty_staff', label: 'Faculty/Staff' },
-    { value: 'non_cvsu', label: 'Non-CvSU Stakeholder' },
-  ];
 
   return (
     <div className="max-w-[960px] mx-auto">
@@ -528,7 +526,7 @@ const UserReserve = () => {
                       name="stakeholder_type_radio"
                       value={opt.value}
                       checked={stakeholderType === opt.value}
-                      onChange={() => setStakeholderType(opt.value)}
+                      onChange={() => setStakeholderChoice(opt.value)}
                       className="sr-only"
                     />
                     <span
@@ -717,6 +715,7 @@ const UserReserve = () => {
                       {isFirst ? 'Primary' : `Lab #${idx + 1}`}
                     </span>
                     <FormSelect
+                      searchable
                       value={entry.labId}
                       onChange={(v) => updateLabField(idx, 'labId', Number(v))}
                       placeholder="Select a laboratory…"
@@ -823,6 +822,7 @@ const UserReserve = () => {
               </div>
             ) : (
               <FormSelect
+                searchable
                 value=""
                 onChange={(v) => {
                   if (Number(v) > 0) addEquipment(Number(v));
@@ -893,6 +893,7 @@ const UserReserve = () => {
                             </div>
                           ) : (
                             <FormSelect
+                              searchable
                               value={validLabs.length === 0 ? '' : String(eq.labIdx)}
                               onChange={(v) => updateEquipmentLabIdx(eq.equipmentId, Number(v))}
                               placeholder="Select a lab first…"

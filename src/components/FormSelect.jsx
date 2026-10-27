@@ -1,3 +1,4 @@
+import { useEffect, useId, useState } from 'react';
 import * as SelectPrimitive from '@radix-ui/react-select';
 import { Check, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -11,8 +12,116 @@ import { cn } from '@/lib/utils';
  * onChange: receives the selected value as a STRING (wrap with Number() for ids).
  * options:  [{ value, label, disabled }]
  */
-const FormSelect = ({ value, onChange, options = [], placeholder = 'Select…', className, disabled }) => {
+const FormSelect = ({ value, onChange, options = [], placeholder = 'Select…', className, disabled, searchable = false }) => {
   const current = value === undefined || value === null || value === 0 || value === '0' ? '' : String(value);
+  const listId = useId();
+  const selectedLabel = options.find((option) => String(option.value) === current)?.label || '';
+  const [query, setQuery] = useState(selectedLabel);
+  const [open, setOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const filteredOptions = options.filter((option) =>
+    option.label.toLowerCase().includes(query.trim().toLowerCase())
+  );
+
+  useEffect(() => {
+    setQuery(selectedLabel);
+    setOpen(false);
+  }, [selectedLabel]);
+
+  if (searchable) {
+    const chooseOption = (option) => {
+      if (!option || option.disabled) return;
+      onChange(String(option.value));
+      setQuery(current ? option.label : '');
+      setOpen(false);
+    };
+
+    return (
+      <div className="relative min-w-0">
+        <input
+          type="text"
+          role="combobox"
+          aria-autocomplete="list"
+          aria-label={placeholder}
+          aria-expanded={open}
+          aria-controls={listId}
+          aria-activedescendant={open && filteredOptions[activeIndex] ? `${listId}-${activeIndex}` : undefined}
+          value={query}
+          disabled={disabled}
+          placeholder={placeholder}
+          autoComplete="off"
+          onFocus={() => {
+            setOpen(true);
+            setActiveIndex(0);
+          }}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setActiveIndex(0);
+            setOpen(true);
+          }}
+          onBlur={() => {
+            setOpen(false);
+            if (query !== selectedLabel && !options.some((option) => option.label === query && !option.disabled)) {
+              setQuery(selectedLabel);
+            }
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              setOpen(false);
+              setQuery(selectedLabel);
+            } else if (event.key === 'ArrowDown' && filteredOptions.length) {
+              event.preventDefault();
+              setOpen(true);
+              setActiveIndex((index) => (index + 1) % filteredOptions.length);
+            } else if (event.key === 'ArrowUp' && filteredOptions.length) {
+              event.preventDefault();
+              setOpen(true);
+              setActiveIndex((index) => (index - 1 + filteredOptions.length) % filteredOptions.length);
+            } else if (event.key === 'Enter' && open) {
+              event.preventDefault();
+              chooseOption(filteredOptions[activeIndex] || filteredOptions.find((option) => !option.disabled));
+            }
+          }}
+          className={cn(
+            'w-full min-w-0 pr-10',
+            'disabled:cursor-not-allowed disabled:opacity-60',
+            className
+          )}
+        />
+        <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#008000]" aria-hidden="true" />
+        {open && (
+          <ul
+            id={listId}
+            role="listbox"
+            className="absolute z-[80] mt-1 max-h-60 w-full overflow-y-auto rounded-xl border-2 border-[#008000] bg-background p-1.5 text-foreground shadow-[0_8px_30px_rgba(0,0,0,0.18)]"
+          >
+            {filteredOptions.length ? filteredOptions.map((option, index) => (
+              <li
+                id={`${listId}-${index}`}
+                key={String(option.value)}
+                role="option"
+                aria-selected={index === activeIndex}
+                aria-disabled={!!option.disabled}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => chooseOption(option)}
+                className={cn(
+                  'rounded-lg px-3 py-2.5 text-sm',
+                  option.disabled
+                    ? 'cursor-not-allowed opacity-50'
+                    : 'cursor-pointer hover:bg-primary/10',
+                  index === activeIndex && !option.disabled && 'bg-primary/10'
+                )}
+              >
+                {option.label}
+              </li>
+            )) : (
+              <li className="px-3 py-2.5 text-sm text-muted-foreground">No options available</li>
+            )}
+          </ul>
+        )}
+      </div>
+    );
+  }
 
   return (
     <SelectPrimitive.Root value={current} onValueChange={onChange} disabled={disabled}>

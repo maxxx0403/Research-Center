@@ -233,6 +233,7 @@ export type Database = {
       paper_submissions: {
         Row: {
           created_at: string
+          destination: string | null
           description: string | null
           file_name: string
           file_path: string
@@ -244,6 +245,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          destination?: string | null
           description?: string | null
           file_name: string
           file_path: string
@@ -255,6 +257,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          destination?: string | null
           description?: string | null
           file_name?: string
           file_path?: string
@@ -472,6 +475,7 @@ export type Database = {
         Args: never
         Returns: {
           created_at: string
+          destination: string | null
           description: string | null
           file_name: string
           file_path: string

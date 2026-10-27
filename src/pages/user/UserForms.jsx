@@ -9,8 +9,10 @@ const UserForms = () => {
   const { user } = useAuth();
   const fileRef = useRef(null);
   const [description, setDescription] = useState('');
+  const [destination, setDestination] = useState('');
   const [uploading, setUploading] = useState(false);
   const [submissions, setSubmissions] = useState([]);
+  const [reservationDestinations, setReservationDestinations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [successMsg, setSuccessMsg] = useState('');
 
@@ -34,10 +36,62 @@ const UserForms = () => {
   useEffect(() => {
     if (user) {
       fetchSubmissions();
+      const fetchReservationDestinations = async () => {
+        const [labsResult, equipmentResult] = await Promise.all([
+          supabase
+            .from('reservations')
+            .select('created_at, laboratories(lab_name, lab_code)')
+            .eq('user_id', user.id)
+            .order('created_at', { ascending: false })
+            .limit(50),
+          supabase
+            .from('equipment_reservations')
+            .select('created_at, equipment(name, laboratories(lab_name, lab_code))')
+            .eq('user_id', user.id)
+            .order('created_at', { ascending: false })
+            .limit(50),
+        ]);
+
+        if (labsResult.error) {
+          console.error('Error fetching recent laboratory reservations:', labsResult.error);
+        }
+        if (equipmentResult.error) {
+          console.error('Error fetching recent equipment reservations:', equipmentResult.error);
+        }
+
+        const options = [
+          ...(labsResult.data || [])
+            .filter((reservation) => reservation.laboratories?.lab_name)
+            .map((reservation) => ({
+              label: `Laboratory: ${reservation.laboratories.lab_name}${reservation.laboratories.lab_code ? ` (${reservation.laboratories.lab_code})` : ''}`,
+              createdAt: reservation.created_at,
+            })),
+          ...(equipmentResult.data || [])
+            .filter((reservation) => reservation.equipment?.name)
+            .map((reservation) => ({
+              label: `Equipment: ${reservation.equipment.name}${reservation.equipment.laboratories?.lab_name ? ` — ${reservation.equipment.laboratories.lab_name}` : ''}`,
+              createdAt: reservation.created_at,
+            })),
+        ];
+
+        const recentOptions = [...new Map(
+          options
+            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+            .map(({ label }) => [label, label])
+        ).values()];
+        setReservationDestinations(recentOptions);
+      };
+
+      fetchReservationDestinations();
     }
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleUpload = async () => {
+    if (!destination.trim()) {
+      alert('Please enter the laboratory or equipment this paper is for.');
+      return;
+    }
+
     const file = fileRef.current?.files?.[0];
     if (!file) {
       alert('Please select a file');
@@ -73,6 +127,7 @@ const UserForms = () => {
           file_path: filePath,
           file_type: ext || '',
           description: sanitizeText(description, { maxLength: 1000 }),
+          destination: sanitizeText(destination, { maxLength: 200 }),
           status: 'submitted'
         });
 
@@ -80,6 +135,7 @@ const UserForms = () => {
 
       setSuccessMsg('✓ File submitted successfully!');
       setDescription('');
+      setDestination('');
       if (fileRef.current) fileRef.current.value = '';
       await fetchSubmissions();
     } catch (error) {
@@ -144,6 +200,27 @@ const UserForms = () => {
                   disabled={uploading}
                 />
                 <p className="text-xs text-muted-foreground mt-1">Supported: PDF, DOCX | Max: 50MB</p>
+              </div>
+
+              <div>
+                <label htmlFor="paper-destination" className="block mb-1.5 font-semibold text-sm text-foreground">
+                  Laboratory or Equipment <span className="text-destructive">*</span>
+                </label>
+                <select
+                  id="paper-destination"
+                  value={destination}
+                  onChange={(e) => setDestination(e.target.value)}
+                  required
+                  className={inputClass}
+                  disabled={uploading}
+                >
+                  <option value="">
+                    {reservationDestinations.length ? 'Select a recent lab or equipment reservation…' : 'No recent lab or equipment reservations'}
+                  </option>
+                  {reservationDestinations.map((option) => (
+                    <option key={option} value={option}>{option}</option>
+                  ))}
+                </select>
               </div>
 
               <div>
@@ -236,6 +313,9 @@ const UserForms = () => {
                           ]}
                         />
                       </div>
+                      <p className="text-xs text-muted-foreground">
+                        <span className="font-semibold text-foreground">For:</span> {s.destination || '—'}
+                      </p>
                       <p className="text-xs text-muted-foreground">{s.description || '—'}</p>
                       <div className="flex items-center justify-between pt-1">
                         <span className={`inline-block px-2.5 py-1 rounded-full text-xs font-semibold ${statusColors[s.status] || 'bg-muted text-muted-foreground'}`}>
@@ -256,6 +336,7 @@ const UserForms = () => {
                 <thead>
                   <tr className="bg-muted/50 border-b-2 border-border">
                     <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">File</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Laboratory or Equipment</th>
                     <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Description</th>
                     <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Status</th>
                     <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Date</th>
@@ -290,6 +371,7 @@ const UserForms = () => {
                             </span>
                           )}
                         </td>
+                        <td className="px-4 py-3 text-muted-foreground text-xs">{s.destination || '—'}</td>
                         <td className="px-4 py-3 text-muted-foreground text-xs">{s.description || '—'}</td>
                         <td className="px-4 py-3">
                           <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${statusColors[s.status] || 'bg-muted text-muted-foreground'}`}>

@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Edit2, Trash2, X, Check, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Package, FlaskConical, FileDown, MessageSquare } from 'lucide-react';
+import { Edit2, Trash2, X, Check, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Package, FlaskConical, FileDown, MessageSquare, Search } from 'lucide-react';
 
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -29,10 +29,24 @@ const EDITABLE_STATUSES = ['pending', 'rejected'];
 // one item in the batch but rejected another).
 const STATUS_PRIORITY = ['rejected', 'pending', 'reserved', 'in_use', 'completed', 'cancelled'];
 const RESERVATIONS_PER_PAGE = 15;
-const filterReservationGroups = (groups, statusFilter, monthFilter) =>
+const filterReservationGroups = (groups, statusFilter, monthFilter, search) =>
   groups.filter((group) =>
     (!statusFilter || group.status === statusFilter) &&
-    (!monthFilter || group.items.some((item) => isInMonth(item.start_datetime, monthFilter)))
+    (!monthFilter || group.items.some((item) => isInMonth(item.start_datetime, monthFilter))) &&
+    (!search || group.items.some((item) => {
+      const equipmentNames = [
+        item.equipment?.name,
+        ...(item.reservation_equipment || []).map((reservationEquipment) => reservationEquipment.equipment?.name),
+      ];
+      const searchText = [
+        item.laboratories?.lab_name,
+        item.laboratories?.lab_code,
+        item.equipment?.laboratories?.lab_name,
+        item.equipment?.laboratories?.lab_code,
+        ...equipmentNames,
+      ].filter(Boolean).join(' ').toLowerCase();
+      return searchText.includes(search);
+    }))
   );
 
 const UserReservations = () => {
@@ -53,6 +67,7 @@ const UserReservations = () => {
   const [activeTab, setActiveTab] = useState('lab');
   const [statusFilter, setStatusFilter] = useState('');
   const [monthFilter, setMonthFilter] = useState('');
+  const [reservationSearch, setReservationSearch] = useState('');
   const [page, setPage] = useState(1);
   const [editingEqKey, setEditingEqKey] = useState(null);
   const [editEqData, setEditEqData] = useState({});
@@ -111,12 +126,12 @@ const UserReservations = () => {
   }, [reservations]);
 
   const filteredLabGroups = useMemo(
-    () => filterReservationGroups(labGroups, statusFilter, monthFilter),
-    [labGroups, statusFilter, monthFilter]
+    () => filterReservationGroups(labGroups, statusFilter, monthFilter, reservationSearch.trim().toLowerCase()),
+    [labGroups, statusFilter, monthFilter, reservationSearch]
   );
   const filteredEqGroups = useMemo(
-    () => filterReservationGroups(eqGroups, statusFilter, monthFilter),
-    [eqGroups, statusFilter, monthFilter]
+    () => filterReservationGroups(eqGroups, statusFilter, monthFilter, reservationSearch.trim().toLowerCase()),
+    [eqGroups, statusFilter, monthFilter, reservationSearch]
   );
   const visibleGroups = activeTab === 'lab' ? filteredLabGroups : filteredEqGroups;
   const pageCount = Math.max(1, Math.ceil(visibleGroups.length / RESERVATIONS_PER_PAGE));
@@ -791,23 +806,39 @@ x{group.totalQuantity}
 
   return (
     <div className="space-y-6">
-      <div className="flex gap-1 border-b border-border">
-        {[
-          { key: 'lab', label: 'Laboratories', icon: FlaskConical, count: labGroups.length },
-          { key: 'equipment', label: 'Equipment', icon: Package, count: eqGroups.length },
-        ].map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            onClick={() => { setActiveTab(t.key); setPage(1); }}
-            className={`inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold bg-transparent border-t-0 border-x-0 border-b-2 -mb-px cursor-pointer transition-colors ${activeTab === t.key ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
-          >
-            <t.icon className="w-4 h-4" /> {t.label}
-            <span className={`px-1.5 py-0.5 rounded-full text-xs font-semibold ${activeTab === t.key ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
-              {t.count}
-            </span>
-          </button>
-        ))}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border">
+        <div className="flex min-w-0 gap-1">
+          {[
+            { key: 'lab', label: 'Laboratories', icon: FlaskConical, count: labGroups.length },
+            { key: 'equipment', label: 'Equipment', icon: Package, count: eqGroups.length },
+          ].map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => { setActiveTab(t.key); setPage(1); }}
+              className={`inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold bg-transparent border-t-0 border-x-0 border-b-2 -mb-px cursor-pointer transition-colors ${activeTab === t.key ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+            >
+              <t.icon className="w-4 h-4" /> {t.label}
+              <span className={`px-1.5 py-0.5 rounded-full text-xs font-semibold ${activeTab === t.key ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
+                {t.count}
+              </span>
+            </button>
+          ))}
+        </div>
+        <div className="relative ml-auto w-full max-w-xl pb-2 sm:w-auto sm:flex-1">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+          <input
+            type="search"
+            value={reservationSearch}
+            onChange={(event) => {
+              setReservationSearch(event.target.value);
+              setPage(1);
+            }}
+            placeholder="Search recent lab or equipment reservations…"
+            aria-label="Search reservations by laboratory or equipment"
+            className="w-full rounded-xl border-2 border-border bg-card py-2.5 pl-10 pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/10"
+          />
+        </div>
       </div>
 
       {activeTab === 'lab' && (

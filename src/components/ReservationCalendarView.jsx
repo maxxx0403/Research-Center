@@ -25,7 +25,9 @@ const toDateKey = (year, month, day) => {
   return `${year}-${mm}-${dd}`;
 };
 
-export const ReservationCalendarView = ({ labId = null }) => {
+// hideNames: when true (student/faculty views) booker names and study titles are
+// never shown or even fetched; bookings just appear as "Booked".
+export const ReservationCalendarView = ({ labId = null, hideNames = false }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [reservations, setReservations] = useState([]);
   const [staffUnavailability, setStaffUnavailability] = useState({});
@@ -47,7 +49,9 @@ export const ReservationCalendarView = ({ labId = null }) => {
 
       let query = supabase
         .from('reservations')
-        .select('*, laboratories(lab_name, lab_code)')
+        .select(hideNames
+          ? 'id, laboratory_id, start_datetime, end_datetime, status, laboratories(lab_name, lab_code)'
+          : '*, laboratories(lab_name, lab_code)')
         .gte('start_datetime', monthStart.toISOString())
         .lte('end_datetime', monthEnd.toISOString())
         .eq('status', 'reserved')
@@ -249,8 +253,8 @@ export const ReservationCalendarView = ({ labId = null }) => {
                   ) : (
                     <div className="space-y-1">
                       {dayReservations.slice(0, 2).map((res, i) => (
-                        <div key={i} className="text-[9px] sm:text-xs px-0.5 sm:px-1 py-0.5 rounded bg-secondary/50 text-secondary-foreground truncate" title={`${res.researcher_name} - ${res.laboratories?.lab_code || 'Lab'}`}>
-                          {res.researcher_name.split(' ')[0]}
+                        <div key={i} className="text-[9px] sm:text-xs px-0.5 sm:px-1 py-0.5 rounded bg-secondary/50 text-secondary-foreground truncate" title={hideNames ? `Booked - ${res.laboratories?.lab_code || 'Lab'}` : `${res.researcher_name} - ${res.laboratories?.lab_code || 'Lab'}`}>
+                          {hideNames ? 'Booked' : res.researcher_name.split(' ')[0]}
                         </div>
                       ))}
                       {dayReservations.length > 2 && (
@@ -303,7 +307,7 @@ export const ReservationCalendarView = ({ labId = null }) => {
                 <div key={idx} className="border border-white/70 bg-white/30 backdrop-blur-xl rounded-lg p-4 hover:bg-white/50 transition-colors">
                   <div className="flex justify-between items-start mb-2">
                     <div>
-                      <p className="font-semibold text-foreground">{res.researcher_name}</p>
+                      <p className="font-semibold text-foreground">{hideNames ? 'Already booked' : res.researcher_name}</p>
                       <p className="text-sm text-muted-foreground">{res.laboratories?.lab_name || 'Lab'} ({res.laboratories?.lab_code})</p>
                     </div>
                     <StatusBadge status={res.status} />
@@ -311,7 +315,7 @@ export const ReservationCalendarView = ({ labId = null }) => {
                   <p className="text-sm text-muted-foreground mb-2">
                     {new Date(res.start_datetime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })} - {new Date(res.end_datetime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                   </p>
-                  {res.study_title && <p className="text-sm text-foreground">{res.study_title}</p>}
+                  {!hideNames && res.study_title && <p className="text-sm text-foreground">{res.study_title}</p>}
                 </div>
               ))
             ) : (

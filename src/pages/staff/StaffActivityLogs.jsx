@@ -1,17 +1,27 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { Download } from 'lucide-react';
+import MonthFilter from '@/components/MonthFilter';
+import { currentMonthManila, monthLabel, monthRangeISO } from '@/lib/monthRange';
+import { fetchAllPages } from '@/lib/fetchAllPages';
+import { downloadActivityLogsExcel } from '@/lib/exportActivityLogs';
 
 const StaffActivityLogs = () => {
   const { user, assignedRoomIds } = useAuth();
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [month, setMonth] = useState(currentMonthManila);
 
   const roomKey = assignedRoomIds.join(',');
 
   const fetchLogs = async () => {
     if (!user) return;
     setLoading(true);
+    setErrorMessage('');
+    const { startISO, endISO } = monthRangeISO(month);
 
     // Older logs were saved with only the actor's name (no actor_id), so match those by name too.
     const { data: profile } = await supabase.from('profiles').select('full_name').eq('user_id', user.id).maybeSingle();
@@ -28,23 +38,35 @@ const StaffActivityLogs = () => {
       rules.push(`and(actor_role.eq.admin,laboratory_ids.ov.{${assignedRoomIds.join(',')}})`);
     }
 
-    let { data, error } = await supabase
-      .from('activity_logs')
-      .select('id, action, description, floor, actor, created_at')
-      .not('actor', 'is', null)
-      .or(rules.join(','))
-      .order('created_at', { ascending: false })
-      .limit(200);
+    let { data, error } = await fetchAllPages(() =>
+      supabase
+        .from('activity_logs')
+        .select('id, action, description, floor, actor, created_at')
+        .not('actor', 'is', null)
+        .or(rules.join(','))
+        .gte('created_at', startISO)
+        .lt('created_at', endISO)
+        .order('created_at', { ascending: false })
+    );
 
     if (error) {
       // New columns not created yet (migration not run) -> fall back to name only.
       console.error('Activity log query failed:', error);
-      ({ data } = await supabase
-        .from('activity_logs')
-        .select('id, action, description, floor, actor, created_at')
-        .eq('actor', myName)
-        .order('created_at', { ascending: false })
-        .limit(200));
+      const fallback = await fetchAllPages(() =>
+        supabase
+          .from('activity_logs')
+          .select('id, action, description, floor, actor, created_at')
+          .eq('actor', myName)
+          .gte('created_at', startISO)
+          .lt('created_at', endISO)
+          .order('created_at', { ascending: false })
+      );
+      data = fallback.data;
+      error = fallback.error;
+    }
+    if (error) {
+      console.error('Activity log fallback query failed:', error);
+      setErrorMessage('Unable to load activity logs. Please try again.');
     }
     setLogs(data || []);
     setLoading(false);
@@ -53,19 +75,44 @@ const StaffActivityLogs = () => {
   useEffect(() => {
     fetchLogs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, roomKey]);
+  }, [user?.id, roomKey, month]);
+
+  const exportLogs = async () => {
+    setExporting(true);
+    try {
+      await downloadActivityLogsExcel(logs, month);
+    } catch (exportError) {
+      console.error('Error exporting activity logs:', exportError);
+      setErrorMessage('Unable to export activity logs. Please try again.');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <div className="bg-card rounded-xl shadow-card overflow-hidden">
-      <div className="px-6 py-4 border-b border-border">
+      <div className="px-4 sm:px-6 py-4 border-b border-border flex flex-wrap items-center justify-between gap-3">
         <h2 className="font-heading text-sm font-bold">
-          Activity Logs <span className="bg-muted text-muted-foreground px-2 py-0.5 rounded-full text-xs ml-2">{logs.length}</span>
+          Activity Logs — {monthLabel(month)} <span className="bg-muted text-muted-foreground px-2 py-0.5 rounded-full text-xs ml-2">{logs.length}</span>
         </h2>
+        <div className="flex flex-wrap items-center gap-2">
+          <MonthFilter value={month} onChange={setMonth} />
+          <button
+            type="button"
+            onClick={exportLogs}
+            disabled={loading || exporting || logs.length === 0}
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Download className="w-4 h-4" /> {exporting ? 'Exporting…' : 'Export Excel'}
+          </button>
+        </div>
       </div>
       {loading ? (
         <div className="text-center py-8 text-muted-foreground text-xs">Loading…</div>
+      ) : errorMessage ? (
+        <div role="alert" className="text-center py-8 text-destructive text-xs">{errorMessage}</div>
       ) : logs.length === 0 ? (
-        <div className="text-center py-8 text-muted-foreground text-xs">No activity yet.</div>
+        <div className="text-center py-8 text-muted-foreground text-xs">No activity for {monthLabel(month)}.</div>
       ) : (
         <>
           {/* Phone / tablet: stacked cards */}

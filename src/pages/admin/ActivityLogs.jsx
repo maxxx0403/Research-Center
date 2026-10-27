@@ -1,40 +1,83 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { Download } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import MonthFilter from '@/components/MonthFilter';
+import { currentMonthManila, monthLabel, monthRangeISO } from '@/lib/monthRange';
+import { fetchAllPages } from '@/lib/fetchAllPages';
+import { downloadActivityLogsExcel } from '@/lib/exportActivityLogs';
 
 const ActivityLogs = () => {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
+  const [error, setError] = useState('');
+  const [month, setMonth] = useState(currentMonthManila);
 
-  const fetchLogs = async () => {
+  const fetchLogs = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from('activity_logs')
-      .select('id, action, description, floor, actor, created_at')
-      // Only actions done by an admin or staff member -- no system / automatic entries.
-      .not('actor', 'is', null)
-      .neq('actor', '')
-      .not('actor', 'ilike', 'system')
-      .order('created_at', { ascending: false })
-      .limit(200);
-    setLogs(data || []);
+    setError('');
+    const { startISO, endISO } = monthRangeISO(month);
+    const { data, error: fetchError } = await fetchAllPages(() =>
+      supabase
+        .from('activity_logs')
+        .select('id, action, description, floor, actor, created_at')
+        .not('actor', 'is', null)
+        .neq('actor', '')
+        .not('actor', 'ilike', 'system')
+        .gte('created_at', startISO)
+        .lt('created_at', endISO)
+        .order('created_at', { ascending: false })
+    );
+    if (fetchError) {
+      console.error('Error fetching activity logs:', fetchError);
+      setError('Unable to load activity logs. Please try again.');
+      setLogs([]);
+    } else {
+      setLogs(data || []);
+    }
     setLoading(false);
-  };
+  }, [month]);
 
   useEffect(() => {
     fetchLogs();
-  }, []);
+  }, [fetchLogs]);
+
+  const exportLogs = async () => {
+    setExporting(true);
+    try {
+      await downloadActivityLogsExcel(logs, month);
+    } catch (exportError) {
+      console.error('Error exporting activity logs:', exportError);
+      setError('Unable to export activity logs. Please try again.');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <div className="bg-card rounded-xl shadow-card overflow-hidden">
-      <div className="px-6 py-4 border-b border-border">
+      <div className="px-4 sm:px-6 py-4 border-b border-border flex flex-wrap items-center justify-between gap-3">
         <h2 className="font-heading text-sm font-bold">
-          Activity Logs <span className="bg-muted text-muted-foreground px-2 py-0.5 rounded-full text-xs ml-2">{logs.length}</span>
+          Activity Logs — {monthLabel(month)} <span className="bg-muted text-muted-foreground px-2 py-0.5 rounded-full text-xs ml-2">{logs.length}</span>
         </h2>
+        <div className="flex flex-wrap items-center gap-2">
+          <MonthFilter value={month} onChange={setMonth} />
+          <button
+            type="button"
+            onClick={exportLogs}
+            disabled={loading || exporting || logs.length === 0}
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Download className="w-4 h-4" /> {exporting ? 'Exporting…' : 'Export Excel'}
+          </button>
+        </div>
       </div>
       {loading ? (
         <div className="text-center py-8 text-muted-foreground text-xs">Loading…</div>
+      ) : error ? (
+        <div role="alert" className="text-center py-8 text-destructive text-xs">{error}</div>
       ) : logs.length === 0 ? (
-        <div className="text-center py-8 text-muted-foreground text-xs">No activity yet.</div>
+        <div className="text-center py-8 text-muted-foreground text-xs">No activity for {monthLabel(month)}.</div>
       ) : (
         <>
           {/* Phone / tablet: stacked cards */}

@@ -1,5 +1,5 @@
 import { Link, useLocation, Outlet, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, CalendarCheck, FlaskConical, MessageSquare, LogOut, ChevronLeft, ChevronDown, FileText, Package, Settings, LifeBuoy, Flag } from 'lucide-react';
+import { LayoutDashboard, CalendarCheck, FlaskConical, MessageSquare, LogOut, ChevronLeft, ChevronDown, FileText, Package, Settings, LifeBuoy } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import NotificationBell from '@/components/NotificationBell';
@@ -13,7 +13,6 @@ const menuItems = [
 { to: '/user/reserve-equipment', icon: Package, label: 'Reserve Equipment' },
 { to: '/user/forms', icon: FileText, label: 'Forms and Papers' },
 { to: '/user/feedback', icon: MessageSquare, label: 'Feedback' },
-{ to: '/user/report-problem', icon: Flag, label: 'Report a Problem' },
 { to: '/user/help', icon: LifeBuoy, label: 'Help & Support' }];
 
 

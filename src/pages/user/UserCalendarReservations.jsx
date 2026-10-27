@@ -19,7 +19,7 @@ const UserCalendarReservations = () => {
         <h1 className="font-heading text-3xl font-bold text-primary mb-2">Reservations Calendar</h1>
         <p className="text-muted-foreground">View all your laboratory reservations in calendar format</p>
       </div>
-      <ReservationCalendarView />
+      <ReservationCalendarView hideNames />
     </div>
   );
 };

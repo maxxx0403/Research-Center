@@ -84,7 +84,7 @@ const UserDashboard = () => {
             <h2 className="font-heading text-sm font-bold text-primary">Reservation Calendar</h2>
           </div>
           <div className="p-3 sm:p-6">
-            <ReservationCalendarView />
+            <ReservationCalendarView hideNames />
           </div>
         </div>
       </div>

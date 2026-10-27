@@ -136,7 +136,7 @@ const AdminEquipmentReservations = () => {
                           icon: RefreshCw,
                           hidden: r.status === 'pending',
                           value: r.status,
-                          options: ['pending', 'reserved', 'in_use', 'completed', 'cancelled', 'rejected'].map((st) => ({ value: st, label: st.replace('_', ' ').replace(/^\w/, (c) => c.toUpperCase()) })),
+                          options: ['reserved', 'in_use', 'completed', 'cancelled'].map((st) => ({ value: st, label: st.replace('_', ' ').replace(/^\w/, (c) => c.toUpperCase()) })),
                           onChange: (v) => updateStatus(r.id, v),
                         },
                         { separator: true },

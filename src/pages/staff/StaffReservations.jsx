@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, Fragment } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Search, Users, Check, X, MessageSquare, FlaskConical, Package, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, FileSpreadsheet } from 'lucide-react';
+import { Search, Users, Check, X, MessageSquare, FlaskConical, Package, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, FileSpreadsheet, RefreshCw } from 'lucide-react';
 import StatusBadge from '@/components/StatusBadge';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -333,6 +333,38 @@ const StaffReservations = () => {
     setRejectionEqReason('');
   };
 
+  const changeLabStatus = async (group, status) => {
+    const { error } = await supabase.from('reservations').update({ status }).in('id', group.ids);
+    if (error) {
+      toast.error(`Failed to update reservation status: ${error.message}`);
+      return;
+    }
+    setLabItems((prev) => prev.map((item) => group.ids.includes(item.id) ? { ...item, status } : item));
+    logReservationAction({
+      userId: user.id,
+      type: 'lab',
+      verb: `Marked ${status.replace('_', ' ')}:`,
+      items: group.items,
+    });
+    toast.success(`Reservation status updated to ${status.replace('_', ' ')}.`);
+  };
+
+  const changeEquipmentStatus = async (group, status) => {
+    const { error } = await supabase.from('equipment_reservations').update({ status }).in('id', group.ids);
+    if (error) {
+      toast.error(`Failed to update equipment reservation status: ${error.message}`);
+      return;
+    }
+    setEqItems((prev) => prev.map((item) => group.ids.includes(item.id) ? { ...item, status } : item));
+    logReservationAction({
+      userId: user.id,
+      type: 'equipment',
+      verb: `Marked ${status.replace('_', ' ')}:`,
+      items: group.items,
+    });
+    toast.success(`Equipment reservation status updated to ${status.replace('_', ' ')}.`);
+  };
+
   return (
     <div className="space-y-6">
       <div className="bg-card rounded-xl shadow-card p-4">
@@ -506,6 +538,17 @@ const StaffReservations = () => {
                         { label: 'Accept', icon: Check, success: true, hidden: group.status !== 'pending', onClick: () => approveLabGroup(group) },
                         { label: 'Reject', icon: X, destructive: true, hidden: group.status !== 'pending', onClick: () => setRejectingId(group.key) },
                         {
+                          label: 'Change status',
+                          icon: RefreshCw,
+                          hidden: group.status === 'pending',
+                          value: group.status,
+                          options: ['reserved', 'in_use', 'completed', 'cancelled'].map((status) => ({
+                            value: status,
+                            label: status.replace('_', ' ').replace(/^\w/, (letter) => letter.toUpperCase()),
+                          })),
+                          onChange: (status) => changeLabStatus(group, status),
+                        },
+                        {
                           label: 'Messages',
                           icon: MessageSquare,
                           onClick: () => setMessagingItem({ type: 'lab', id: r.id, label: `Reservation #RC${String(r.id).padStart(5, '0')}`, reason: r.rejection_reason }),
@@ -644,6 +687,17 @@ const StaffReservations = () => {
                       items={[
                         { label: 'Accept', icon: Check, success: true, hidden: group.status !== 'pending', onClick: () => approveEqGroup(group) },
                         { label: 'Reject', icon: X, destructive: true, hidden: group.status !== 'pending', onClick: () => setRejectingEqId(group.key) },
+                        {
+                          label: 'Change status',
+                          icon: RefreshCw,
+                          hidden: group.status === 'pending',
+                          value: group.status,
+                          options: ['reserved', 'in_use', 'completed', 'cancelled'].map((status) => ({
+                            value: status,
+                            label: status.replace('_', ' ').replace(/^\w/, (letter) => letter.toUpperCase()),
+                          })),
+                          onChange: (status) => changeEquipmentStatus(group, status),
+                        },
                         {
                           label: 'Messages',
                           icon: MessageSquare,

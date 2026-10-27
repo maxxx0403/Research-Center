@@ -5,6 +5,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import BookingDateTimeInput from '@/components/BookingDateTimeInput';
 import FormSelect from '@/components/FormSelect';
+import { getStakeholderConfig } from '@/lib/stakeholder';
 import { validateReservationFields, sanitizeText } from '@/lib/validation';
 import { earliestBookableInput, earliestBookableLabel, manilaInputToISO, validateBookingDateTime, spansNonOfficialDay, MIN_ADVANCE_DAYS } from '@/lib/timezone';
 
@@ -27,7 +28,10 @@ const UserReserveEquipment = () => {
   const [items, setItems] = useState([emptyItem(preId)]);
   const [startDatetime, setStartDatetime] = useState('');
   const [endDatetime, setEndDatetime] = useState('');
-  const [stakeholderType, setStakeholderType] = useState('');
+  const [stakeholderChoice, setStakeholderChoice] = useState('');
+  const { options: stakeholderOptions, autoValue: autoStakeholder } = getStakeholderConfig(user?.email);
+  // Non-CvSU emails (e.g. gmail.com) are auto-set; CvSU emails choose Student / Faculty.
+  const stakeholderType = autoStakeholder || stakeholderChoice;
   const [members, setMembers] = useState([{ name: '', studentNumber: '' }]);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
@@ -220,7 +224,7 @@ const UserReserveEquipment = () => {
     setItems([emptyItem()]);
     setStartDatetime('');
     setEndDatetime('');
-    setStakeholderType('');
+    setStakeholderChoice('');
     setMembers([{ name: '' }]);
     setError('');
   };
@@ -274,12 +278,6 @@ const UserReserveEquipment = () => {
       </div>
     );
   }
-
-  const stakeholderOptions = [
-    { value: 'student', label: 'Student' },
-    { value: 'faculty_staff', label: 'Faculty/Staff' },
-    { value: 'non_cvsu', label: 'Non-CvSU Stakeholder' },
-  ];
 
   return (
     <div className="max-w-[960px] mx-auto">
@@ -391,7 +389,7 @@ const UserReserveEquipment = () => {
                       name="stakeholder_type_radio"
                       value={opt.value}
                       checked={stakeholderType === opt.value}
-                      onChange={() => setStakeholderType(opt.value)}
+                      onChange={() => setStakeholderChoice(opt.value)}
                       className="sr-only"
                     />
                     <span
@@ -563,6 +561,7 @@ const UserReserveEquipment = () => {
                   <div key={idx} className="rounded-xl border-2 !border-[color:var(--field-border)] bg-card p-3 sm:p-4 space-y-3">
                     <div className="flex flex-wrap sm:flex-nowrap gap-2 items-start">
                       <FormSelect
+                        searchable
                         value={item.equipmentId}
                         onChange={(v) => updateItemEquipment(idx, Number(v))}
                         placeholder="Select equipment…"

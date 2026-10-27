@@ -38,6 +38,7 @@ const SubmissionRow = ({ s, onStatusChange, onDelete }) => {
           </span>
         )}
       </td>
+      <td className="px-4 py-3 text-xs text-muted-foreground max-w-[180px]">{s.destination || '—'}</td>
       <td className="px-4 py-3 text-xs text-muted-foreground max-w-[200px] truncate">{s.description || '—'}</td>
       <td className="px-4 py-3">
         <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold capitalize ${statusColors[s.status] || 'bg-muted text-muted-foreground'}`}>{s.status}</span>
@@ -94,6 +95,9 @@ const SubmissionCard = ({ s, onStatusChange, onDelete }) => {
           ]}
         />
       </div>
+      <p className="text-xs text-muted-foreground">
+        <span className="font-semibold text-foreground">For:</span> {s.destination || '—'}
+      </p>
       <p className="text-xs text-muted-foreground">{s.description || '—'}</p>
       <div className="flex items-center justify-between gap-2 pt-1">
         <span className="text-xs text-muted-foreground">
@@ -220,6 +224,7 @@ const AdminSubmissions = () => {
   const filtered = submissions.filter((s) => {
     const matchesSearch = !search || 
       s.file_name.toLowerCase().includes(search.toLowerCase()) || 
+      (s.destination || '').toLowerCase().includes(search.toLowerCase()) ||
       (s.description || '').toLowerCase().includes(search.toLowerCase());
     const matchesStatus = !statusFilter || s.status === statusFilter;
     return matchesSearch && matchesStatus;
@@ -308,6 +313,7 @@ const AdminSubmissions = () => {
                   <tr className="bg-muted/50 border-b-2 border-border">
                     <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Submitted By</th>
                     <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">File</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Laboratory or Equipment</th>
                     <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Description</th>
                     <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Status</th>
                     <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Date</th>
