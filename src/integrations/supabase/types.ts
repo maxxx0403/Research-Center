@@ -499,6 +499,18 @@ export type Database = {
           reservation_date: string
         }[]
       }
+      get_equipment_availability: {
+        Args: {
+          p_end_datetime: string
+          p_equipment_ids: number[]
+          p_start_datetime: string
+        }
+        Returns: {
+          available_quantity: number
+          equipment_id: number
+          reserved_quantity: number
+        }[]
+      }
       get_staff_list: {
         Args: never
         Returns: {

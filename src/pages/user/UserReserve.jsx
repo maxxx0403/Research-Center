@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { FlaskConical, Info, CheckCircle2, Package, X, Plus, Trash2, Clock, Users, AlertCircle, Hash } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { sendReservationEmail } from '@/lib/reservationEmail';
 import { useAuth } from '@/contexts/AuthContext';
 import BookingDateTimeInput from '@/components/BookingDateTimeInput';
 import FormSelect from '@/components/FormSelect';
@@ -360,6 +361,8 @@ const UserReserve = () => {
         return;
       }
     }
+
+    sendReservationEmail({ event: 'new', reservationType: 'lab', ids: insertedLabs.map((r) => r.id) });
 
     setReservationId(lastId);
     setSuccess(true);

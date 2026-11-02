@@ -1,5 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
 import { manilaInputToISO } from '@/lib/timezone';
+import { fetchEquipmentAvailability } from '@/lib/equipmentAvailability';
 
 /**
  * Check for conflicts with existing reservations
@@ -85,22 +86,18 @@ export const checkEquipmentReservationConflict = async (equipmentId, startDateTi
  */
 export const checkEquipmentAvailability = async (equipment, startDateTime, endDateTime) => {
   try {
-    const allConflicts = [];
-
-    for (const eq of equipment) {
-      const { hasConflict, conflicts } = await checkEquipmentReservationConflict(
-        eq.equipmentId,
-        startDateTime,
-        endDateTime
-      );
-
-      if (hasConflict) {
-        allConflicts.push({
-          equipmentId: eq.equipmentId,
-          conflicts
-        });
-      }
-    }
+    const availability = await fetchEquipmentAvailability(
+      equipment.map((item) => ({
+        equipmentId: item.equipmentId,
+        startDatetime: startDateTime,
+        endDatetime: endDateTime,
+      }))
+    );
+    const allConflicts = equipment.flatMap((item) => {
+      const available = availability[item.equipmentId]?.available ?? 0;
+      const requested = Number(item.quantity) || 1;
+      return available < requested ? [{ equipmentId: item.equipmentId, available, requested }] : [];
+    });
 
     return {
       hasConflict: allConflicts.length > 0,

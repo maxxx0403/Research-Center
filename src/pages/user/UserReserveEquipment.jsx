@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { Package, CheckCircle2, Info, Clock, Users, Plus, X, AlertCircle, Hash } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { sendReservationEmail } from '@/lib/reservationEmail';
 import { useAuth } from '@/contexts/AuthContext';
 import BookingDateTimeInput from '@/components/BookingDateTimeInput';
 import FormSelect from '@/components/FormSelect';
@@ -245,6 +246,7 @@ const UserReserveEquipment = () => {
         ? getPendingReservationLimitMessage()
         : err.message);
     } else {
+      sendReservationEmail({ event: 'new', reservationType: 'equipment', ids: (data || []).map((r) => r.id) });
       setReservationIds((data || []).map((r) => r.id));
       setSuccess(true);
       window.scrollTo({ top: 0, behavior: 'smooth' });

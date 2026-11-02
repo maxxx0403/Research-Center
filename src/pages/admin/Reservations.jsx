@@ -8,6 +8,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { updateReservationApproval, updateReservationApprovalBatch } from '@/lib/reservationUtils';
 import { downloadRequestForm, downloadLabBatchRequestForm } from '@/lib/generateRequestForm';
 import { notifyReservationApproved, notifyReservationRejected } from '@/lib/notifications';
+import { sendReservationEmail } from '@/lib/reservationEmail';
 import ReservationMessagesPanel from '@/components/ReservationMessagesPanel';
 import { logReservationAction } from '@/lib/activityLog';
 import { downloadReservationsExcel } from '@/lib/exportReservations';
@@ -276,6 +277,7 @@ const Reservations = () => {
       if (group.primary?.user_id) {
         notifyReservationApproved({ userId: group.primary.user_id, label });
       }
+      sendReservationEmail({ event: 'approved', reservationType: 'lab', ids });
     } catch (error) {
       console.error('Error approving reservation:', error);
       alert('Failed to approve reservation');
@@ -298,6 +300,7 @@ const Reservations = () => {
       if (group.primary?.user_id) {
         notifyReservationRejected({ userId: group.primary.user_id, label, reason: rejectionReason });
       }
+      sendReservationEmail({ event: 'rejected', reservationType: 'lab', ids });
       setRejectingId(null);
       setRejectionReason('');
     } catch (error) {
@@ -354,6 +357,7 @@ const Reservations = () => {
     if (group.primary?.user_id) {
       notifyReservationApproved({ userId: group.primary.user_id, label });
     }
+    sendReservationEmail({ event: 'approved', reservationType: 'equipment', ids });
   };
 
   const rejectEqGroup = async (group) => {
@@ -372,6 +376,7 @@ const Reservations = () => {
     if (group.primary?.user_id) {
       notifyReservationRejected({ userId: group.primary.user_id, label, reason: rejectionEqReason });
     }
+    sendReservationEmail({ event: 'rejected', reservationType: 'equipment', ids });
     setRejectingEqId(null);
     setRejectionEqReason('');
   };
@@ -435,7 +440,7 @@ const Reservations = () => {
 
       {month && (
         <p className="text-xs text-muted-foreground -mt-2">
-          Showing reservations scheduled in <span className="font-semibold text-foreground">{monthLabel(month)}</span>. The Excel export uses the same month.
+          Showing reservations scheduled in <span className="font-semibold text-foreground">{monthLabel(month)}</span>. The Excel export uses the same filter.
         </p>
       )}
 

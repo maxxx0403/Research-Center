@@ -3,7 +3,7 @@ import { currentMonthManila } from '@/lib/monthRange';
 
 /**
  * Month filter for the Reservations lists (admin + staff).
- * value: "" = all months, otherwise "YYYY-MM". Uses the same picker as Reports.
+ * value: "" = all dates, otherwise "YYYY-MM" or "YYYY-MM-DD_YYYY-MM-DD". Uses the same picker as Reports.
  */
 const ReservationMonthFilter = ({ value, onChange }) => (
   <div className="flex flex-wrap items-center gap-2 pb-2">
@@ -17,7 +17,7 @@ const ReservationMonthFilter = ({ value, onChange }) => (
           : 'bg-card text-foreground border-border hover:bg-muted'
       }`}
     >
-      All months
+      All dates
     </button>
     <div className={value ? '' : 'opacity-60 hover:opacity-100 focus-within:opacity-100 transition-opacity'}>
       <MonthFilter value={value || currentMonthManila()} onChange={onChange} showThisMonth={false} />

@@ -6,6 +6,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { notifyReservationApproved, notifyReservationRejected } from '@/lib/notifications';
+import { sendReservationEmail } from '@/lib/reservationEmail';
 import ReservationMessagesPanel from '@/components/ReservationMessagesPanel';
 import { logReservationAction } from '@/lib/activityLog';
 import RowActions from '@/components/RowActions';
@@ -274,6 +275,7 @@ const StaffReservations = () => {
     toast.success('Reservation approved.');
     logReservationAction({ userId: user.id, type: 'lab', verb: 'Accepted', items: group.items });
     if (group.primary?.user_id) notifyReservationApproved({ userId: group.primary.user_id, label, reservationType: 'lab', reservationId: ids[0] });
+    sendReservationEmail({ event: 'approved', reservationType: 'lab', ids });
   };
 
   const rejectLab = async () => {
@@ -293,6 +295,7 @@ const StaffReservations = () => {
     toast.success('Reservation rejected.');
     logReservationAction({ userId: user.id, type: 'lab', verb: 'Rejected', items: group.items, reason: rejectionReason });
     if (group.primary?.user_id) notifyReservationRejected({ userId: group.primary.user_id, label, reason: rejectionReason, reservationType: 'lab', reservationId: ids[0] });
+    sendReservationEmail({ event: 'rejected', reservationType: 'lab', ids });
     setRejectingId(null);
     setRejectionReason('');
   };
@@ -310,6 +313,7 @@ const StaffReservations = () => {
     toast.success('Equipment reservation approved.');
     logReservationAction({ userId: user.id, type: 'equipment', verb: 'Accepted', items: group.items });
     if (group.primary?.user_id) notifyReservationApproved({ userId: group.primary.user_id, label, reservationType: 'equipment', reservationId: ids[0] });
+    sendReservationEmail({ event: 'approved', reservationType: 'equipment', ids });
   };
 
   const rejectEq = async () => {
@@ -329,6 +333,7 @@ const StaffReservations = () => {
     toast.success('Equipment reservation rejected.');
     logReservationAction({ userId: user.id, type: 'equipment', verb: 'Rejected', items: group.items, reason: rejectionEqReason });
     if (group.primary?.user_id) notifyReservationRejected({ userId: group.primary.user_id, label, reason: rejectionEqReason, reservationType: 'equipment', reservationId: ids[0] });
+    sendReservationEmail({ event: 'rejected', reservationType: 'equipment', ids });
     setRejectingEqId(null);
     setRejectionEqReason('');
   };
@@ -434,7 +439,7 @@ const StaffReservations = () => {
 
       {month && (
         <p className="text-xs text-muted-foreground -mt-2">
-          Showing reservations scheduled in <span className="font-semibold text-foreground">{monthLabel(month)}</span>. The Excel export uses the same month.
+          Showing reservations scheduled in <span className="font-semibold text-foreground">{monthLabel(month)}</span>. The Excel export uses the same filter.
         </p>
       )}
 
