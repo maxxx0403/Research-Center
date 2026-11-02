@@ -2,6 +2,10 @@ import { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, UserX } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import StatusBadge from '@/components/StatusBadge';
+import {
+  fetchPendingReservationCounts,
+  MAX_PENDING_RESERVATIONS_PER_DATE,
+} from '@/lib/pendingReservationLimit';
 
 // Friday (5), Saturday (6) and Sunday (0) are non-official days: closed unless a
 // laboratory has "allow non-official hours" switched ON.
@@ -34,12 +38,38 @@ export const ReservationCalendarView = ({ labId = null, hideNames = false }) => 
   const [loading, setLoading] = useState(false);
   const [selectedDate, setSelectedDate] = useState(null);
   const [closedDays, setClosedDays] = useState(DEFAULT_CLOSED_DAYS);
+  const [pendingCounts, setPendingCounts] = useState({});
+  const [pendingCountError, setPendingCountError] = useState(false);
 
   useEffect(() => {
     fetchReservations();
     fetchStaffUnavailability();
     fetchOpenDays();
   }, [currentDate, labId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    fetchPendingCounts();
+    const intervalId = window.setInterval(fetchPendingCounts, 30000);
+    return () => window.clearInterval(intervalId);
+  }, [currentDate]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const fetchPendingCounts = async () => {
+    setPendingCounts({});
+    setPendingCountError(false);
+    const dates = Array.from(
+      { length: getDaysInMonth(currentDate) },
+      (_, index) => toDateKey(currentDate.getFullYear(), currentDate.getMonth(), index + 1)
+    );
+
+    try {
+      const counts = await fetchPendingReservationCounts(dates);
+      setPendingCounts(counts);
+      setPendingCountError(false);
+    } catch (error) {
+      console.error('Error fetching pending reservation counts:', error);
+      setPendingCountError(true);
+    }
+  };
 
   const fetchReservations = async () => {
     setLoading(true);
@@ -127,6 +157,11 @@ export const ReservationCalendarView = ({ labId = null, hideNames = false }) => 
     return staffUnavailability[key] || [];
   };
 
+  const getPendingCountForDate = (day) => {
+    const key = toDateKey(currentDate.getFullYear(), currentDate.getMonth(), day);
+    return pendingCounts[key] || 0;
+  };
+
   const getDaysInMonth = (date) =>
     new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
 
@@ -205,7 +240,16 @@ export const ReservationCalendarView = ({ labId = null, hideNames = false }) => 
           <UserX className="w-3.5 h-3.5 text-amber-600" />
           Room unavailable
         </div>
+        <div className="flex items-center gap-1.5 text-xs text-amber-700">
+          <div className="h-3 w-3 rounded bg-amber-100 border border-amber-300" />
+          Pending bookings (max {MAX_PENDING_RESERVATIONS_PER_DATE}/date)
+        </div>
       </div>
+      {pendingCountError && (
+        <p role="status" className="mb-3 text-xs text-amber-700">
+          Pending booking counts could not be loaded. Refresh the page to try again.
+        </p>
+      )}
 
       <div className="grid grid-cols-7 gap-1 sm:gap-2 mb-2">
         {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d, i) => (
@@ -222,6 +266,7 @@ export const ReservationCalendarView = ({ labId = null, hideNames = false }) => 
         {days.map((day, idx) => {
           const closed = day ? isClosedDay(day) : false;
           const dayReservations = day ? getReservationsForDate(day) : [];
+          const pendingCount = day ? getPendingCountForDate(day) : 0;
           const unavailableStaff = day ? getUnavailableStaffForDate(day) : [];
           const isToday = day && new Date().toDateString() === new Date(currentDate.getFullYear(), currentDate.getMonth(), day).toDateString();
           const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
@@ -260,6 +305,18 @@ export const ReservationCalendarView = ({ labId = null, hideNames = false }) => 
                       {dayReservations.length > 2 && (
                         <div className="text-[9px] sm:text-xs text-muted-foreground px-0.5 sm:px-1">+{dayReservations.length - 2}<span className="hidden sm:inline"> more</span></div>
                       )}
+                      {pendingCount > 0 && (
+                        <div
+                          className={`text-[9px] sm:text-xs px-0.5 sm:px-1 py-0.5 rounded font-semibold truncate ${
+                            pendingCount >= MAX_PENDING_RESERVATIONS_PER_DATE
+                              ? 'bg-destructive/10 text-destructive'
+                              : 'bg-amber-100 text-amber-800'
+                          }`}
+                          title={`${pendingCount}/${MAX_PENDING_RESERVATIONS_PER_DATE} pending bookings across all labs and equipment`}
+                        >
+                          {pendingCount}/{MAX_PENDING_RESERVATIONS_PER_DATE} pending
+                        </div>
+                      )}
                       {unavailableStaff.length > 0 && (
                         <div className="hidden sm:block text-[10px] text-amber-700 px-1 truncate">
                           {unavailableStaff.length === 1
@@ -284,6 +341,16 @@ export const ReservationCalendarView = ({ labId = null, hideNames = false }) => 
           <h3 className="font-heading text-lg font-bold text-primary mb-4">
             Reservations for {new Date(currentDate.getFullYear(), currentDate.getMonth(), selectedDate).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
           </h3>
+          {getPendingCountForDate(selectedDate) > 0 && (
+            <p className={`mb-4 rounded-lg border p-3 text-sm ${
+              getPendingCountForDate(selectedDate) >= MAX_PENDING_RESERVATIONS_PER_DATE
+                ? 'border-destructive/30 bg-destructive/10 text-destructive'
+                : 'border-amber-300 bg-amber-50 text-amber-800'
+            }`}>
+              {getPendingCountForDate(selectedDate)}/{MAX_PENDING_RESERVATIONS_PER_DATE} pending bookings across all labs and equipment.
+              {getPendingCountForDate(selectedDate) >= MAX_PENDING_RESERVATIONS_PER_DATE && ' No more bookings can be submitted for this date.'}
+            </p>
+          )}
 
           {getUnavailableStaffForDate(selectedDate).length > 0 && (
             <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3">

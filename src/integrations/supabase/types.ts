@@ -492,6 +492,13 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      get_pending_reservation_counts: {
+        Args: { p_dates: string[] }
+        Returns: {
+          pending_count: number
+          reservation_date: string
+        }[]
+      }
       get_staff_list: {
         Args: never
         Returns: {

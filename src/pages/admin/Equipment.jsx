@@ -7,8 +7,11 @@ import { notifyEquipmentRemoved } from '@/lib/notifications';
 import RowActions from '@/components/RowActions';
 import { useAuth } from '@/contexts/AuthContext';
 import { logCatalogAction } from '@/lib/activityLog';
+import CatalogPagination from '@/components/CatalogPagination';
+import { catalogDuplicateErrorMessage, isDuplicateEquipment } from '@/lib/catalogValidation';
 
 const ACTIVE_STATUSES = ['pending', 'reserved', 'in_use'];
+const EQUIPMENT_PER_PAGE = 20;
 
 const EMPTY_EQ = { name: '', brand: '', model: '', laboratory_id: '', quantity: '1' };
 const inputCls = "w-full px-3 py-2.5 border border-border rounded-lg text-sm bg-card text-foreground focus:outline-none focus:border-primary";
@@ -19,6 +22,7 @@ const AdminEquipment = () => {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [selectedLab, setSelectedLab] = useState(0);
+  const [page, setPage] = useState(1);
   const [labs, setLabs] = useState([]);
   const [showModal, setShowModal] = useState(false);
   const [editTarget, setEditTarget] = useState(null);
@@ -64,6 +68,12 @@ const AdminEquipment = () => {
     const matchesLab = !selectedLab || e.laboratories && labs.find((l) => l.id === selectedLab)?.lab_code === e.laboratories.lab_code;
     return matchesSearch && matchesLab;
   });
+  const pageCount = Math.max(1, Math.ceil(filtered.length / EQUIPMENT_PER_PAGE));
+  const currentPage = Math.min(page, pageCount);
+  const paginatedEquipment = filtered.slice(
+    (currentPage - 1) * EQUIPMENT_PER_PAGE,
+    currentPage * EQUIPMENT_PER_PAGE
+  );
 
   const handleChange = (e) => setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
 
@@ -94,10 +104,16 @@ const AdminEquipment = () => {
       quantity: qty,
     };
 
+    if (isDuplicateEquipment(equipment, payload, editTarget?.id)) {
+      setSaving(false);
+      toast.error('This equipment with the same name, brand, model, and laboratory already exists.');
+      return;
+    }
+
     if (editTarget) {
       const { data, error } = await supabase.from('equipment').update(payload).eq('id', editTarget.id).select('*, laboratories(lab_name, lab_code)').single();
       setSaving(false);
-      if (error) { toast.error('Failed to update: ' + error.message); return; }
+      if (error) { toast.error(catalogDuplicateErrorMessage(error, 'update')); return; }
       setEquipment((prev) => prev.map((e) => e.id === editTarget.id ? data : e));
       logCatalogAction({
         userId: user?.id,
@@ -110,13 +126,14 @@ const AdminEquipment = () => {
     } else {
       const { data, error } = await supabase.from('equipment').insert({ ...payload, status: 'available', available_quantity: qty }).select('*, laboratories(lab_name, lab_code)').single();
       setSaving(false);
-      if (error) { toast.error('Failed to add: ' + error.message); return; }
+      if (error) { toast.error(catalogDuplicateErrorMessage(error, 'add')); return; }
       setEquipment((prev) => [...prev, data]);
       logCatalogAction({ userId: user?.id, type: 'equipment', verb: 'Added', item: data, laboratoryIds: [data.laboratory_id] });
       toast.success(`${data.name} added successfully!`);
     }
 
     setForm(EMPTY_EQ); setShowModal(false); setEditTarget(null);
+    setPage(1);
   };
 
   const handleDelete = async () => {
@@ -181,12 +198,12 @@ const AdminEquipment = () => {
             <label className="block text-xs font-semibold text-muted-foreground mb-1">Search</label>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Equipment name or brand…" className="w-full pl-10 pr-4 py-2 border border-border rounded-lg text-sm bg-card text-foreground focus:outline-none focus:border-primary" />
+              <input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Equipment name or brand…" className="w-full pl-10 pr-4 py-2 border border-border rounded-lg text-sm bg-card text-foreground focus:outline-none focus:border-primary" />
             </div>
           </div>
           <div className="min-w-[200px]">
             <label className="block text-xs font-semibold text-muted-foreground mb-1">Laboratory</label>
-            <select value={selectedLab} onChange={(e) => setSelectedLab(Number(e.target.value))} className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-card text-foreground">
+            <select value={selectedLab} onChange={(e) => { setSelectedLab(Number(e.target.value)); setPage(1); }} className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-card text-foreground">
               <option value={0}>All Laboratories</option>
               {labs.map((l) => <option key={l.id} value={l.id}>{l.lab_code} - {l.lab_name}</option>)}
             </select>
@@ -220,7 +237,7 @@ const AdminEquipment = () => {
             <tbody>
               {loading ?
                 <tr><td colSpan={6} className="text-center py-12 text-muted-foreground">Loading…</td></tr> :
-                filtered.length ? filtered.map((e) =>
+                filtered.length ? paginatedEquipment.map((e) =>
                   <tr key={e.id} className="border-b border-muted hover:bg-muted/30">
                     <td className="px-4 py-3 font-semibold">{e.name}</td>
                     <td className="px-4 py-3 text-muted-foreground">{e.brand || '—'}</td>
@@ -269,6 +286,14 @@ const AdminEquipment = () => {
             </tbody>
           </table>
         </div>
+        <CatalogPagination
+          page={currentPage}
+          pageCount={pageCount}
+          itemCount={filtered.length}
+          pageSize={EQUIPMENT_PER_PAGE}
+          itemLabel="equipment items"
+          onPageChange={setPage}
+        />
       </div>
 
       {/* Add / Edit Modal */}

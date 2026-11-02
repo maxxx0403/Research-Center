@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import NonOfficialToggle, { NonOfficialBulk, saveNonOfficialHours } from '@/components/NonOfficialToggle';
 import { useAuth } from '@/contexts/AuthContext';
 import { logCatalogAction } from '@/lib/activityLog';
+import { catalogDuplicateErrorMessage, isDuplicateLaboratory } from '@/lib/catalogValidation';
 
 const EMPTY_LAB = { lab_name: '', lab_code: '', floor: '', description: '', max_capacity: '', equipment_list: '' };
 const inputCls = "w-full px-3 py-2.5 border border-border rounded-lg text-sm bg-card text-foreground focus:outline-none focus:border-primary";
@@ -53,7 +54,6 @@ const Laboratories = () => {
   const handleSave = async (e) => {
     e.preventDefault();
     if (!form.lab_name.trim() || !form.lab_code.trim()) { toast.error('Lab name and code are required.'); return; }
-    setSaving(true);
     const payload = {
       lab_name: form.lab_name.trim(),
       lab_code: form.lab_code.trim().toUpperCase(),
@@ -63,17 +63,23 @@ const Laboratories = () => {
       equipment_list: form.equipment_list.trim() || null,
     };
 
+    if (isDuplicateLaboratory(labs, payload, editTarget?.id)) {
+      toast.error('A laboratory with the same code or the same name and floor already exists.');
+      return;
+    }
+
+    setSaving(true);
     if (editTarget) {
       const { data, error } = await supabase.from('laboratories').update(payload).eq('id', editTarget.id).select().single();
       setSaving(false);
-      if (error) { toast.error('Failed to update: ' + error.message); return; }
+      if (error) { toast.error(catalogDuplicateErrorMessage(error, 'update')); return; }
       setLabs((prev) => prev.map((l) => l.id === editTarget.id ? data : l));
       logCatalogAction({ userId: user?.id, type: 'laboratory', verb: 'Updated', item: data, laboratoryIds: [data.id] });
       toast.success(`${data.lab_name} updated successfully!`);
     } else {
       const { data, error } = await supabase.from('laboratories').insert({ ...payload, current_occupancy: 0, status: 'available' }).select().single();
       setSaving(false);
-      if (error) { toast.error('Failed to add: ' + error.message); return; }
+      if (error) { toast.error(catalogDuplicateErrorMessage(error, 'add')); return; }
       setLabs((prev) => [...prev, data]);
       logCatalogAction({ userId: user?.id, type: 'laboratory', verb: 'Added', item: data, laboratoryIds: [data.id] });
       toast.success(`${data.lab_name} added successfully!`);

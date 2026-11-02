@@ -13,6 +13,13 @@ import {
 } from '@/lib/reservationUtils';
 import { validateReservationFields, sanitizeText } from '@/lib/validation';
 import { earliestBookableInput, earliestBookableLabel, manilaInputToISO, validateBookingDateTime, spansNonOfficialDay, MIN_ADVANCE_DAYS } from '@/lib/timezone';
+import PendingReservationDateNotice from '@/components/PendingReservationDateNotice';
+import {
+  fetchPendingReservationCounts,
+  getFullPendingReservationDate,
+  getPendingReservationLimitMessage,
+  PENDING_RESERVATION_LIMIT_ERROR,
+} from '@/lib/pendingReservationLimit';
 
 // `min` for datetime-local inputs: today + 7 days (Philippine Time).
 const getMinDatetimeLocal = () => earliestBookableInput();
@@ -254,6 +261,23 @@ const UserReserve = () => {
       }
     }
 
+    let pendingCounts;
+    try {
+      pendingCounts = await fetchPendingReservationCounts(
+        validLabs.map((entry) => entry.startDatetime.slice(0, 10))
+      );
+    } catch (countError) {
+      console.error('Error checking pending reservation limit:', countError);
+      triggerError('Could not verify pending bookings for the selected date. Please try again.');
+      return;
+    }
+
+    const fullDate = getFullPendingReservationDate(pendingCounts);
+    if (fullDate) {
+      triggerError(getPendingReservationLimitMessage(fullDate));
+      return;
+    }
+
     const rawFields = {
       researcher_name: form.get('researcher_name'),
       email: form.get('email') || '',
@@ -304,6 +328,10 @@ const UserReserve = () => {
       .select('id');
 
     if (labInsertErr) {
+      if (labInsertErr.message.includes(PENDING_RESERVATION_LIMIT_ERROR)) {
+        triggerError(getPendingReservationLimitMessage());
+        return;
+      }
       triggerError(labInsertErr.message);
       return;
     }
@@ -815,6 +843,7 @@ const UserReserve = () => {
                           required
                           className={inputClass}
                         />
+                        <PendingReservationDateNotice date={entry.startDatetime.slice(0, 10)} />
                       </div>
                       <div>
                         <label className="block mb-1.5 font-semibold text-xs text-muted-foreground">

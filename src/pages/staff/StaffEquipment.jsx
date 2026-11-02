@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Search, Plus, X, Pencil, RefreshCw, CalendarCheck } from 'lucide-react';
 import RowActions from '@/components/RowActions';
 import { supabase } from '@/integrations/supabase/client';
@@ -6,8 +6,11 @@ import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { NonOfficialBulk, saveNonOfficialHours } from '@/components/NonOfficialToggle';
 import { logCatalogAction } from '@/lib/activityLog';
+import CatalogPagination from '@/components/CatalogPagination';
+import { catalogDuplicateErrorMessage, isDuplicateEquipment } from '@/lib/catalogValidation';
 
 const EMPTY_EQ = { name: '', brand: '', model: '', laboratory_id: '', quantity: '1' };
+const EQUIPMENT_PER_PAGE = 20;
 const inputCls = "w-full px-3 py-2.5 border border-border rounded-lg text-sm bg-card text-foreground focus:outline-none focus:border-primary";
 
 const StaffEquipment = () => {
@@ -16,12 +19,13 @@ const StaffEquipment = () => {
   const [floorLabs, setFloorLabs] = useState([]); // rooms this staff member is assigned to only
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
   const [showModal, setShowModal] = useState(false);
   const [editTarget, setEditTarget] = useState(null);
   const [form, setForm] = useState(EMPTY_EQ);
   const [saving, setSaving] = useState(false);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     const [{ data: eqData }, { data: labData }] = await Promise.all([
     supabase.from('equipment').select('*, laboratories(lab_name, lab_code, floor)').order('name'),
     supabase.from('laboratories').select('id, lab_name, lab_code, floor').order('lab_code')]
@@ -36,14 +40,20 @@ const StaffEquipment = () => {
     setEquipment(scopedEq);
     setFloorLabs(scopedLabs);
     setLoading(false);
-  };
+  }, [assignedRoomIds]);
 
-  useEffect(() => { loadData(); }, [assignedRoomIds]);
+  useEffect(() => { loadData(); }, [loadData]);
 
   const filtered = equipment.filter((e) =>
   !search ||
   e.name.toLowerCase().includes(search.toLowerCase()) ||
   (e.brand || '').toLowerCase().includes(search.toLowerCase())
+  );
+  const pageCount = Math.max(1, Math.ceil(filtered.length / EQUIPMENT_PER_PAGE));
+  const currentPage = Math.min(page, pageCount);
+  const paginatedEquipment = filtered.slice(
+    (currentPage - 1) * EQUIPMENT_PER_PAGE,
+    currentPage * EQUIPMENT_PER_PAGE
   );
 
   const handleChange = (e) => setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
@@ -80,10 +90,16 @@ const StaffEquipment = () => {
       quantity: qty
     };
 
+    if (isDuplicateEquipment(equipment, payload, editTarget?.id)) {
+      setSaving(false);
+      toast.error('This equipment with the same name, brand, model, and laboratory already exists.');
+      return;
+    }
+
     if (editTarget) {
       const { error } = await supabase.from('equipment').update(payload).eq('id', editTarget.id);
       setSaving(false);
-      if (error) { toast.error('Failed to update: ' + error.message); return; }
+      if (error) { toast.error(catalogDuplicateErrorMessage(error, 'update')); return; }
       logCatalogAction({
         userId: user?.id,
         type: 'equipment',
@@ -95,13 +111,14 @@ const StaffEquipment = () => {
     } else {
       const { error } = await supabase.from('equipment').insert({ ...payload, status: 'available', available_quantity: qty });
       setSaving(false);
-      if (error) { toast.error('Failed to add: ' + error.message); return; }
+      if (error) { toast.error(catalogDuplicateErrorMessage(error, 'add')); return; }
       logCatalogAction({ userId: user?.id, type: 'equipment', verb: 'Added', item: payload, laboratoryIds: [payload.laboratory_id] });
       toast.success(`${payload.name} added.`);
     }
 
     setShowModal(false);
     setEditTarget(null);
+    setPage(1);
     loadData();
   };
 
@@ -130,7 +147,7 @@ const StaffEquipment = () => {
             <label className="block text-xs font-semibold text-muted-foreground mb-1">Search</label>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Equipment name or brand…" className="w-full pl-10 pr-4 py-2 border border-border rounded-lg text-sm bg-card text-foreground focus:outline-none focus:border-primary" />
+              <input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Equipment name or brand…" className="w-full pl-10 pr-4 py-2 border border-border rounded-lg text-sm bg-card text-foreground focus:outline-none focus:border-primary" />
             </div>
           </div>
           <NonOfficialBulk count={filtered.length} disabled={filtered.length === 0} onAll={setAllNonOfficial} />
@@ -159,7 +176,7 @@ const StaffEquipment = () => {
               <tr><td colSpan={4} className="text-center py-10 text-muted-foreground text-xs">Loading...</td></tr>
             ) : filtered.length === 0 ? (
               <tr><td colSpan={4} className="text-center py-10 text-muted-foreground text-xs">No equipment found for your assigned rooms.</td></tr>
-            ) : filtered.map((e) =>
+            ) : paginatedEquipment.map((e) =>
             <tr key={e.id} className="border-b border-muted hover:bg-muted/30">
                 <td className="px-4 py-3">
                   <div className="font-semibold">{e.name}</div>
@@ -202,6 +219,14 @@ const StaffEquipment = () => {
           </tbody>
         </table>
         </div>
+        <CatalogPagination
+          page={currentPage}
+          pageCount={pageCount}
+          itemCount={filtered.length}
+          pageSize={EQUIPMENT_PER_PAGE}
+          itemLabel="equipment items"
+          onPageChange={setPage}
+        />
       </div>
 
       {showModal &&

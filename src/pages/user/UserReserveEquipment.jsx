@@ -9,6 +9,13 @@ import { getStakeholderConfig, isCvsuEmail } from '@/lib/stakeholder';
 import { CVSU_COLLEGES } from '@/lib/cvsuColleges';
 import { validateReservationFields, sanitizeText } from '@/lib/validation';
 import { earliestBookableInput, earliestBookableLabel, manilaInputToISO, validateBookingDateTime, spansNonOfficialDay, MIN_ADVANCE_DAYS } from '@/lib/timezone';
+import PendingReservationDateNotice from '@/components/PendingReservationDateNotice';
+import {
+  fetchPendingReservationCounts,
+  getFullPendingReservationDate,
+  getPendingReservationLimitMessage,
+  PENDING_RESERVATION_LIMIT_ERROR,
+} from '@/lib/pendingReservationLimit';
 
 // `min` for datetime-local inputs: today + 7 days (Philippine Time).
 const getMinDatetimeLocal = () => earliestBookableInput();
@@ -185,6 +192,21 @@ const UserReserveEquipment = () => {
       return;
     }
 
+    let pendingCounts;
+    try {
+      pendingCounts = await fetchPendingReservationCounts([startDatetime.slice(0, 10)]);
+    } catch (countError) {
+      console.error('Error checking pending reservation limit:', countError);
+      triggerError('Could not verify pending bookings for the selected date. Please try again.');
+      return;
+    }
+
+    const fullDate = getFullPendingReservationDate(pendingCounts);
+    if (fullDate) {
+      triggerError(getPendingReservationLimitMessage(fullDate));
+      return;
+    }
+
     const batchId = items.length > 1 && crypto?.randomUUID ? crypto.randomUUID() : null;
 
     const sharedFields = {
@@ -219,7 +241,9 @@ const UserReserveEquipment = () => {
       .select('id');
 
     if (err) {
-      triggerError(err.message);
+      triggerError(err.message.includes(PENDING_RESERVATION_LIMIT_ERROR)
+        ? getPendingReservationLimitMessage()
+        : err.message);
     } else {
       setReservationIds((data || []).map((r) => r.id));
       setSuccess(true);
@@ -682,6 +706,7 @@ const UserReserveEquipment = () => {
                           required
                           className={inputClass}
                         />
+                  <PendingReservationDateNotice date={startDatetime.slice(0, 10)} />
                 </div>
                 <div>
                   <label className="block mb-1.5 font-semibold text-xs text-muted-foreground">
