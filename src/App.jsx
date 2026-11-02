@@ -1,9 +1,12 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes, Navigate } from "react-router-dom";
+import { useEffect } from "react";
+import { BrowserRouter, Route, Routes, Navigate, useNavigate } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
+import { isRecoveryActive } from "@/lib/passwordRecovery";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
 import Reserve from "./pages/Reserve";
@@ -48,6 +51,23 @@ import PrivacyNotice from "./components/PrivacyNotice";
 
 const queryClient = new QueryClient();
 
+// If a password-reset email link lands on any page (for example the Site URL
+// instead of /reset-password), send the user to the reset form.
+const RecoveryRedirect = () => {
+  const navigate = useNavigate();
+  useEffect(() => {
+    const goReset = () => {
+      if (window.location.pathname !== "/reset-password") navigate("/reset-password", { replace: true });
+    };
+    if (isRecoveryActive()) goReset();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "PASSWORD_RECOVERY") goReset();
+    });
+    return () => subscription.unsubscribe();
+  }, [navigate]);
+  return null;
+};
+
 const App = () =>
 <QueryClientProvider client={queryClient}>
     <AuthProvider>
@@ -55,6 +75,7 @@ const App = () =>
         <Toaster />
         <Sonner />
         <BrowserRouter>
+          <RecoveryRedirect />
           <PrivacyNotice />
           <Routes>
             <Route path="/" element={<Index />} />

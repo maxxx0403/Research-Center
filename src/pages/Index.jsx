@@ -118,7 +118,7 @@ const Index = () => {
               <Microscope className="w-3.5 h-3.5" /> Cavite State University — Research Center
             </div>
             <h1 className="font-heading text-[clamp(2.2rem,4.5vw,3.6rem)] font-bold text-primary mb-6 leading-tight max-w-[780px] mx-auto">
-              Research Center Laboratory Reservation System
+              MSC LabSync Reservation System
             </h1>
             <p className="text-lg text-muted-foreground mb-10 max-w-[620px] mx-auto">
               Book laboratories, reserve equipment, submit research papers, and manage your research workflow — all in one platform.
@@ -207,7 +207,7 @@ const Index = () => {
         {filteredLabs.length === 0 ?
         <p className="text-center text-muted-foreground max-w-[1200px] mx-auto py-10">No laboratories match your search.</p> :
 
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(340px,1fr))] gap-6 max-w-[1200px] mx-auto">
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,340px),1fr))] gap-6 max-w-[1200px] mx-auto">
           {filteredLabs.map((lab) =>
           <div key={lab.id} className={`isolate rounded-2xl p-6 bg-white/30 dark:bg-white/10 backdrop-blur-2xl backdrop-saturate-[1.8] border border-white/70
                 shadow-[0_8px_32px_rgba(20,60,40,0.12),inset_0_1px_1px_rgba(255,255,255,0.9),inset_0_0_24px_rgba(255,255,255,0.3)]
@@ -215,11 +215,10 @@ const Index = () => {
                 transition-all relative overflow-hidden group ${lab.status !== 'available' ? 'opacity-90' : ''}`}>
               <span aria-hidden className="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-b from-white/50 via-white/5 to-transparent" />
               <div className={`absolute top-0 left-0 right-0 h-1 ${lab.status === 'available' ? 'gradient-primary' : lab.status === 'maintenance' ? 'bg-destructive' : 'bg-warning'}`} />
-              <div className="w-14 h-14 gradient-primary rounded-xl flex items-center justify-center mb-5 text-primary-foreground">
-                <FlaskConical className="w-5 h-5" />
+              <div className="min-w-14 h-14 px-4 w-fit max-w-full gradient-primary rounded-xl flex items-center justify-center mb-5 text-primary-foreground font-heading font-bold text-base tracking-wide">
+                <span className="truncate">{lab.lab_code}</span>
               </div>
               <h3 className="font-heading text-sm text-primary mb-1 font-bold leading-snug">{lab.lab_name}</h3>
-              <code className="text-[0.7rem] bg-white/60 px-1.5 py-0.5 rounded text-primary">{lab.lab_code}</code>
               <p className="text-muted-foreground text-sm leading-relaxed mb-4 mt-3">{lab.description}</p>
               <div className="flex justify-between items-center mb-4 flex-wrap gap-1">
                 <span className="bg-white/60 px-3 py-1 rounded-full text-xs text-muted-foreground font-medium">
@@ -318,7 +317,7 @@ const Index = () => {
       <section id="feedback" className="py-24 px-[5%]">
         <div className="text-center mb-14">
           <h2 className="font-heading text-[clamp(1.9rem,4vw,2.8rem)] text-primary mb-3 font-bold">We'd Love Your Feedback</h2>
-          <p className="text-lg text-muted-foreground max-w-[580px] mx-auto">Help us improve the Research Center Laboratory Reservation System</p>
+          <p className="text-lg text-muted-foreground max-w-[580px] mx-auto">Help us improve the MSC LabSync Reservation System</p>
         </div>
 
         {feedbackSubmitted ? (
@@ -451,7 +450,7 @@ const Index = () => {
       {/* Footer */}
       <footer className="py-8 px-[5%] bg-foreground text-center">
         <p className="text-primary-foreground/60 text-sm flex items-center justify-center gap-2">
-          <img src={cvsuLogo} alt="CvSU" className="w-5 h-5" width={20} height={20} loading="lazy" /> © 2026 Cavite State University — Research Center Laboratory Reservation System
+          <img src={cvsuLogo} alt="CvSU" className="w-5 h-5" width={20} height={20} loading="lazy" /> © 2026 Cavite State University — MSC LabSync Reservation System
         </p>
         <p className="mt-2 text-sm">
           <Link to="/privacy-policy" className="text-primary-foreground/60 hover:text-primary-foreground/90 no-underline underline-offset-2 hover:underline">

@@ -1,6 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { isRecoveryActive } from '@/lib/passwordRecovery';
 import { markActivity, clearActivity, isSessionStale } from '@/lib/sessionActivity';
 
 const INACTIVITY_LIMIT_MS = 10 * 60 * 1000; // 10 minutes
@@ -103,6 +104,16 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      // A password-reset link creates a temporary session. It must not act as a
+      // login: the app stays "logged out" until the user signs in with the new password.
+      if (_event === 'PASSWORD_RECOVERY' || (session?.user && isRecoveryActive())) {
+        setSession(null);
+        setUser(null);
+        setRole(null);
+        setAssignedRooms([]);
+        setLoading(false);
+        return;
+      }
       if (_event === 'INITIAL_SESSION' && shouldDropStaleSession(session)) {
         // Left unused too long: end it and require a fresh login.
         setTimeout(() => supabase.auth.signOut(), 0);
@@ -124,6 +135,13 @@ export const AuthProvider = ({ children }) => {
     });
 
     supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user && isRecoveryActive()) {
+        setSession(null);
+        setUser(null);
+        setRole(null);
+        setLoading(false);
+        return;
+      }
       if (shouldDropStaleSession(session)) {
         supabase.auth.signOut();
         setSession(null);

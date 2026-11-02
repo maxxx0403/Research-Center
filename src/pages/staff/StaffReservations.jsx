@@ -408,7 +408,7 @@ const StaffReservations = () => {
               key={t.key}
               type="button"
               onClick={() => { setTab(t.key); setPage(1); }}
-              className={`inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold bg-transparent border-t-0 border-x-0 border-b-2 -mb-px cursor-pointer transition-colors ${tab === t.key ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+              className={`inline-flex items-center justify-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 flex-1 sm:flex-none min-w-0 py-2.5 text-sm font-semibold bg-transparent border-t-0 border-x-0 border-b-2 -mb-px cursor-pointer transition-colors ${tab === t.key ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
             >
               <t.icon className="w-4 h-4" /> {t.label}
               <span className={`px-1.5 py-0.5 rounded-full text-xs font-semibold ${tab === t.key ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>

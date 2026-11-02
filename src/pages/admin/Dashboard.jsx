@@ -61,13 +61,13 @@ const Dashboard = () => {
           shadow-[0_8px_32px_rgba(20,60,40,0.12),inset_0_1px_1px_rgba(255,255,255,0.9),inset_0_0_24px_rgba(255,255,255,0.3)]
           relative overflow-hidden">
         <span aria-hidden className="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-b from-white/50 via-white/5 to-transparent" />
-        <div className="px-6 py-4 border-b border-white/40 flex flex-wrap gap-3 justify-between items-center">
+        <div className="px-4 sm:px-6 py-4 border-b border-white/40 flex flex-wrap gap-3 justify-between items-center">
           <h2 className="font-heading text-sm font-bold">Reservations Calendar</h2>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 max-w-full min-w-0">
             <select
               value={selectedLabId || ''}
               onChange={(e) => setSelectedLabId(e.target.value ? Number(e.target.value) : null)}
-              className="px-3 py-1.5 border-2 border-white/70 rounded-lg text-xs bg-white/50 backdrop-blur-xl text-foreground focus:outline-none focus:border-primary"
+              className="max-w-full min-w-0 px-3 py-1.5 border-2 border-white/70 rounded-lg text-xs bg-white/50 backdrop-blur-xl text-foreground focus:outline-none focus:border-primary"
             >
               <option value="">All Laboratories</option>
               {labs.map((lab) => (

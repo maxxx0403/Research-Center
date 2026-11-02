@@ -11,8 +11,9 @@ import { cn } from '@/lib/utils';
  * value:    selected value (number/string). '' / 0 / null shows the placeholder.
  * onChange: receives the selected value as a STRING (wrap with Number() for ids).
  * options:  [{ value, label, disabled }]
+ * wrapperClassName: (searchable only) layout classes for the outer wrapper, e.g. 'flex-1' to fill a flex row.
  */
-const FormSelect = ({ value, onChange, options = [], placeholder = 'Select…', className, disabled, searchable = false }) => {
+const FormSelect = ({ value, onChange, options = [], placeholder = 'Select…', className, wrapperClassName, disabled, searchable = false }) => {
   const current = value === undefined || value === null || value === 0 || value === '0' ? '' : String(value);
   const listId = useId();
   const selectedLabel = options.find((option) => String(option.value) === current)?.label || '';
@@ -37,7 +38,7 @@ const FormSelect = ({ value, onChange, options = [], placeholder = 'Select…', 
     };
 
     return (
-      <div className="relative min-w-0">
+      <div className={cn('relative min-w-0', wrapperClassName)}>
         <input
           type="text"
           role="combobox"

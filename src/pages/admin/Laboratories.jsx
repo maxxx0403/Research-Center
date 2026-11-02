@@ -161,7 +161,7 @@ const Laboratories = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(420px,1fr))] gap-5">
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,420px),1fr))] gap-5">
         {filtered.length === 0 && (
           <p className="text-sm text-muted-foreground col-span-full text-center py-8">No laboratories found.</p>
         )}

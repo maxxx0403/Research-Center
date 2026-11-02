@@ -5,7 +5,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import BookingDateTimeInput from '@/components/BookingDateTimeInput';
 import FormSelect from '@/components/FormSelect';
-import { getStakeholderConfig } from '@/lib/stakeholder';
+import { getStakeholderConfig, isCvsuEmail } from '@/lib/stakeholder';
+import { CVSU_COLLEGES } from '@/lib/cvsuColleges';
 import {
   checkLabReservationConflict,
   checkEquipmentAvailability,
@@ -43,6 +44,10 @@ const UserReserve = () => {
   const { options: stakeholderOptions, autoValue: autoStakeholder } = getStakeholderConfig(user?.email);
   // Non-CvSU emails (e.g. gmail.com) are auto-set; CvSU emails choose Student / Faculty.
   const stakeholderType = autoStakeholder || stakeholderChoice;
+  // CvSU stakeholders (Student / Faculty-Staff) pick their college from a list;
+  // outsiders type their own agency.
+  const isCvsuStakeholder = stakeholderType ? stakeholderType !== 'non_cvsu' : isCvsuEmail(user?.email);
+  const [unitCollege, setUnitCollege] = useState('');
   const [members, setMembers] = useState([{ name: '', studentNumber: '' }]);
 
   useEffect(() => {
@@ -156,6 +161,11 @@ const UserReserve = () => {
       return;
     }
 
+    if (isCvsuStakeholder && !unitCollege) {
+      triggerError('Please select your College / Unit.');
+      return;
+    }
+
     for (let i = 0; i < members.length; i++) {
       const m = members[i];
       const hasName = m.name && m.name.trim();
@@ -263,7 +273,7 @@ const UserReserve = () => {
       email: rawFields.email.trim(),
       phone: rawFields.phone ? Number(rawFields.phone.replace(/\D/g, '')) : null,
       stakeholder_type: stakeholderType,
-      unit_college: sanitizeText(form.get('unit_college'), { maxLength: 150 }),
+      unit_college: sanitizeText(unitCollege, { maxLength: 150 }),
       adviser_name: sanitizeText(adviserName, { maxLength: 150 }),
       study_title: sanitizeText(rawFields.study_title, { maxLength: 300 }),
       special_requirements: sanitizeText(form.get('special_requirements'), { maxLength: 500 }),
@@ -367,6 +377,7 @@ const UserReserve = () => {
     setSelectedEquipments([]);
     setSelectedLabs([{ labId: 0, startDatetime: '', endDatetime: '' }]);
     setStakeholderChoice('');
+    setUnitCollege('');
     setMembers([{ name: '' }]);
     setError('');
   };
@@ -526,7 +537,7 @@ const UserReserve = () => {
                       name="stakeholder_type_radio"
                       value={opt.value}
                       checked={stakeholderType === opt.value}
-                      onChange={() => setStakeholderChoice(opt.value)}
+                      onChange={() => { setStakeholderChoice(opt.value); setUnitCollege(''); }}
                       className="sr-only"
                     />
                     <span
@@ -550,7 +561,24 @@ const UserReserve = () => {
               <label className="block mb-1.5 font-semibold text-sm text-foreground">
                 Unit / College / Agency <span className="text-destructive">*</span>
               </label>
-              <input name="unit_college" required placeholder="e.g. College of Engineering and Information Technology" className={inputClass} />
+              {isCvsuStakeholder ? (
+                <FormSelect
+                  value={unitCollege}
+                  onChange={setUnitCollege}
+                  placeholder="Select your college…"
+                  className={inputClass}
+                  options={CVSU_COLLEGES}
+                />
+              ) : (
+                <input
+                  name="unit_college"
+                  required
+                  value={unitCollege}
+                  onChange={(e) => setUnitCollege(e.target.value)}
+                  placeholder="e.g. Company, school, or agency name"
+                  className={inputClass}
+                />
+              )}
             </div>
             <div className="md:col-span-2">
               <label className="block mb-1.5 font-semibold text-sm text-foreground">
@@ -719,7 +747,8 @@ const UserReserve = () => {
                       value={entry.labId}
                       onChange={(v) => updateLabField(idx, 'labId', Number(v))}
                       placeholder="Select a laboratory…"
-                      className={inputClass + ' flex-1 min-w-0'}
+                      wrapperClassName="flex-1 min-w-0"
+                      className={inputClass}
                       options={labs.map((l) => ({
                         value: l.id,
                         label: `${l.lab_name} (${l.lab_code})${l.status === 'maintenance' ? ' — Under Maintenance' : ''}`,

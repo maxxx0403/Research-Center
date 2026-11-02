@@ -296,7 +296,7 @@ const UserForms = () => {
                     'rejected': 'bg-destructive/10 text-destructive'
                   };
                   return (
-                    <div key={s.id} className="border border-border rounded-xl p-3.5 space-y-2">
+                    <div key={s.id} className="border border-border rounded-xl p-3.5 space-y-2 min-w-0 [overflow-wrap:anywhere]">
                       <div className="flex items-start justify-between gap-2">
                         {urlData?.publicUrl ? (
                           <a href={urlData.publicUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-primary font-semibold no-underline hover:underline text-sm min-w-0">

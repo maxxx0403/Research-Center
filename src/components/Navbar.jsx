@@ -39,6 +39,18 @@ const Navbar = () => {
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
   };
 
+  // Logo: always go back to the very start of the landing page.
+  const goToTop = (e) => {
+    setMobileOpen(false);
+    if (isHome) {
+      e.preventDefault();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      if (window.location.hash) window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    } else {
+      window.scrollTo(0, 0);
+    }
+  };
+
   const tint = scrolled ? 'bg-white/45 dark:bg-white/15' : 'bg-white/25 dark:bg-white/10';
 
   return (
@@ -47,7 +59,7 @@ const Navbar = () => {
       <div className={`relative rounded-full transition-all duration-300 ${tint} ${GLASS}`}>
         <Sheen />
         <div className="relative flex justify-between items-center pl-4 pr-2.5 md:pl-5 py-2">
-          <Link to="/" className="flex items-center gap-3 font-heading font-bold text-lg text-primary no-underline">
+          <Link to="/" onClick={goToTop} aria-label="Back to top" className="flex items-center gap-3 font-heading font-bold text-lg text-primary no-underline">
             <img src={cvsuLogo} alt="CvSU Logo" className="w-9 h-9" width={36} height={36} />
             CvSU Research Center
           </Link>

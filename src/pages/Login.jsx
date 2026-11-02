@@ -5,6 +5,8 @@ import { supabase } from '@/integrations/supabase/client';
 import cvsuLogo from '@/assets/cvsu-logo.png';
 import { useAuth } from '@/contexts/AuthContext';
 import { markActivity } from '@/lib/sessionActivity';
+import { endRecovery } from '@/lib/passwordRecovery';
+import { getAuthErrorMessage } from '@/lib/authErrors';
 import { validateEmail, validatePassword, sanitizeText, checkLoginThrottle, recordLoginAttempt } from '@/lib/validation';
 
 const PASSWORD_RULES = [
@@ -68,10 +70,11 @@ const Login = () => {
   const [searchParams] = useSearchParams();
   const redirectTo = searchParams.get('redirect') || '';
   const timedOut = searchParams.get('reason') === 'timeout';
+  const resetDone = searchParams.get('reset') === 'success';
   const { user, role, loading: authLoading, signOut } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState(timedOut ? 'You were logged out due to 10 minutes of inactivity. Please log in again.' : '');
-  const [success, setSuccess] = useState('');
+  const [success, setSuccess] = useState(resetDone ? 'Your password has been reset. Please log in with your new password.' : '');
   const [loading, setLoading] = useState(false);
   const [isRegister, setIsRegister] = useState(false);
   const [signupPassword, setSignupPassword] = useState('');
@@ -129,6 +132,7 @@ const Login = () => {
 
     setLoading(true);
     signingInRef.current = true;
+    endRecovery();
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     recordLoginAttempt(!error);
     if (error) {
@@ -195,12 +199,26 @@ const Login = () => {
     }
   };
 
-  const forgotPassword = async () => {
-    const email = document.querySelector('input[name="email"]')?.value;
-    if (!email) { setError('Enter your email first, then click Forgot Password.'); return; }
-    setLoading(true); setError('');
+  const forgotPassword = async (e) => {
+    // Read the email from the form whose button was clicked. The page renders
+    // both a desktop and a mobile form, so a global querySelector can pick the
+    // hidden (empty) one.
+    const email = (e?.currentTarget?.form?.elements?.email?.value || '').trim();
+    if (!email) { setError('Enter your email first, then click Forgot Password.'); setSuccess(''); return; }
+    const emailErr = validateEmail(email);
+    if (emailErr) { setError(emailErr); setSuccess(''); return; }
+    setLoading(true); setError(''); setSuccess('');
     const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}/reset-password` });
-    if (error) { setError(error.message); } else { setSuccess('Password reset link sent! Check your email.'); }
+    if (error) {
+      const msg = (error.message || '').toLowerCase();
+      if (error.status === 429 || msg.includes('rate limit') || msg.includes('only request this after')) {
+        setError('Too many reset requests. Please wait a few minutes before trying again.');
+      } else {
+        setError(getAuthErrorMessage(error));
+      }
+    } else {
+      setSuccess('If that email has an account, a password reset link has been sent. Please check your inbox (and spam folder).');
+    }
     setLoading(false);
   };
 
