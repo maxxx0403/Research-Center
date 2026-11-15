@@ -6,7 +6,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import StatusBadge from '@/components/StatusBadge';
 import ReservationMonthFilter from '@/components/ReservationMonthFilter';
-import RowActions from '@/components/RowActions';
+import RowActions, { ItemCancelControls, SelectedCancelBar, useCancelSelection } from '@/components/RowActions';
 import RejectionNote from '@/components/RejectionNote';
 import BookingDateTimeInput from '@/components/BookingDateTimeInput';
 import {
@@ -15,6 +15,7 @@ import {
   resubmitReservation,
   resubmitEquipmentReservations,
   cancelReservationBatch,
+  cancelReservationItems,
 } from '@/lib/reservationUtils';
 import { downloadRequestForm, downloadLabBatchRequestForm, downloadEquipmentRequestForm } from '@/lib/generateRequestForm';
 import ReservationMessagesPanel from '@/components/ReservationMessagesPanel';
@@ -29,6 +30,8 @@ const EDITABLE_STATUSES = ['pending', 'rejected'];
 // one item in the batch but rejected another).
 const STATUS_PRIORITY = ['rejected', 'pending', 'reserved', 'in_use', 'completed', 'cancelled'];
 const RESERVATIONS_PER_PAGE = 15;
+// Rows of a multi-reservation that the researcher can still cancel one by one.
+const CANCELLABLE_ITEM_STATUSES = ['pending', 'reserved'];
 const filterReservationGroups = (groups, statusFilter, monthFilter, search) =>
   groups.filter((group) =>
     (!statusFilter || group.status === statusFilter) &&
@@ -64,6 +67,8 @@ const UserReservations = () => {
   const [highlightId, setHighlightId] = useState(null);
   const [expandedEqGroups, setExpandedEqGroups] = useState({});
   const [expandedLabGroups, setExpandedLabGroups] = useState({});
+  const cancelSel = useCancelSelection();
+  const [cancellingItems, setCancellingItems] = useState(false);
   const [activeTab, setActiveTab] = useState('lab');
   const [statusFilter, setStatusFilter] = useState('');
   const [monthFilter, setMonthFilter] = useState('');
@@ -203,6 +208,30 @@ const UserReservations = () => {
 
   const toggleLabGroup = (key) => {
     setExpandedLabGroups((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  // Cancel only the chosen labs/days (type 'lab') or equipment items (type 'equipment')
+  // of a multi-reservation; the rest of the batch stays as it is.
+  const handleCancelItems = async (type, group, ids) => {
+    const items = group.items.filter((it) => ids.includes(it.id) && CANCELLABLE_ITEM_STATUSES.includes(it.status));
+    if (!items.length) return;
+    const fmtDay = (iso) => new Date(iso).toLocaleDateString('en-US', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric' });
+    const lines = items.map((it) => (type === 'lab'
+      ? `• ${it.laboratories?.lab_name || 'Laboratory'} — ${fmtDay(it.start_datetime)}`
+      : `• ${it.equipment?.name || 'Equipment'} x${it.quantity_reserved}`));
+    const stillActive = group.items.filter((it) => !ids.includes(it.id) && ['pending', 'reserved', 'in_use'].includes(it.status)).length;
+    const note = stillActive === 0 ? '\n\nThis will cancel the whole reservation.' : `\n\nThe other ${stillActive} will stay.`;
+    if (!confirm(`Cancel ${items.length === 1 ? 'this' : `these ${items.length}`}?\n\n${lines.join('\n')}${note}`)) return;
+    setCancellingItems(true);
+    try {
+      await cancelReservationItems(type === 'lab' ? 'reservations' : 'equipment_reservations', items.map((it) => it.id), CANCELLABLE_ITEM_STATUSES);
+      cancelSel.clear(group.key);
+      await fetchData();
+    } catch (error) {
+      console.error('Error cancelling selected items:', error);
+      alert('Failed to cancel. Please try again.');
+    }
+    setCancellingItems(false);
   };
 
   const handleCancelLabGroup = async (group) => {
@@ -503,6 +532,12 @@ const UserReservations = () => {
                         <p className="text-xs font-bold text-primary uppercase tracking-wider mb-2 flex items-center gap-1.5">
                           <FlaskConical className="w-3.5 h-3.5" /> Laboratories in this Reservation
                         </p>
+                        <SelectedCancelBar
+                          count={cancelSel.get(group.key).length}
+                          disabled={cancellingItems}
+                          onClear={() => cancelSel.clear(group.key)}
+                          onCancel={() => handleCancelItems('lab', group, cancelSel.get(group.key))}
+                        />
                         <div className="space-y-2">
                           {group.items.map((it) => {
                             const itHasEquipment = it.reservation_equipment && it.reservation_equipment.length > 0;
@@ -527,6 +562,13 @@ const UserReservations = () => {
                                         <Edit2 className="w-3 h-3" /> {it.status === 'rejected' ? 'Edit & Resubmit' : 'Edit'}
                                       </button>
                                     )}
+                                    <ItemCancelControls
+                                      checked={cancelSel.has(group.key, it.id)}
+                                      onToggle={() => cancelSel.toggle(group.key, it.id)}
+                                      canCancel={CANCELLABLE_ITEM_STATUSES.includes(it.status)}
+                                      disabled={cancellingItems}
+                                      onCancel={() => handleCancelItems('lab', group, [it.id])}
+                                    />
                                   </div>
                                 </div>
                                 {itHasEquipment && (
@@ -717,6 +759,12 @@ x{group.totalQuantity}
                         <p className="text-xs font-bold text-primary uppercase tracking-wider mb-2 flex items-center gap-1.5">
                           <Package className="w-3.5 h-3.5" /> Reserved Equipment
                         </p>
+                        <SelectedCancelBar
+                          count={cancelSel.get(group.key).length}
+                          disabled={cancellingItems}
+                          onClear={() => cancelSel.clear(group.key)}
+                          onCancel={() => handleCancelItems('equipment', group, cancelSel.get(group.key))}
+                        />
                         <div className="flex flex-wrap gap-2">
                           {group.items.map((it) => (
                             <div key={it.id} className="bg-card border border-border rounded-lg px-3 py-2 text-xs flex items-center gap-2">
@@ -728,6 +776,13 @@ x{group.totalQuantity}
                                 x{it.quantity_reserved}
                               </span>
                               <StatusBadge status={it.status} />
+                              <ItemCancelControls
+                                checked={cancelSel.has(group.key, it.id)}
+                                onToggle={() => cancelSel.toggle(group.key, it.id)}
+                                canCancel={CANCELLABLE_ITEM_STATUSES.includes(it.status)}
+                                disabled={cancellingItems}
+                                onCancel={() => handleCancelItems('equipment', group, [it.id])}
+                              />
                             </div>
                           ))}
                         </div>

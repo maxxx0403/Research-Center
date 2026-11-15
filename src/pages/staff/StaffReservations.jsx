@@ -5,15 +5,18 @@ import StatusBadge from '@/components/StatusBadge';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
-import { notifyReservationApproved, notifyReservationRejected } from '@/lib/notifications';
+import { notifyReservationApproved, notifyReservationRejected, notifyReservationCancelled } from '@/lib/notifications';
+import { cancelReservationItems } from '@/lib/reservationUtils';
 import { sendReservationEmail } from '@/lib/reservationEmail';
 import ReservationMessagesPanel from '@/components/ReservationMessagesPanel';
 import { logReservationAction } from '@/lib/activityLog';
-import RowActions from '@/components/RowActions';
+import RowActions, { ItemCancelControls, SelectedCancelBar, useCancelSelection } from '@/components/RowActions';
 import { downloadReservationsExcel } from '@/lib/exportReservations';
 import ReservationMonthFilter from '@/components/ReservationMonthFilter';
 import { isInMonth, monthLabel, monthRangeISO } from '@/lib/monthRange';
 
+// Rows of a multi-reservation that staff can still cancel one by one.
+const CANCELLABLE_ITEM_STATUSES = ['pending', 'reserved', 'in_use'];
 const STATUS_PRIORITY = ['rejected', 'pending', 'reserved', 'in_use', 'completed', 'cancelled'];
 const RESERVATIONS_PER_PAGE = 15;
 
@@ -69,6 +72,9 @@ const groupByBatch = (items) => {
     return {
       key,
       ids: sorted.map((it) => it.id),
+      // Rows still in play: bulk approve/reject/status changes skip rows that were cancelled one by one
+      // (unless every row is cancelled).
+      activeIds: (sorted.some((it) => it.status !== 'cancelled') ? sorted.filter((it) => it.status !== 'cancelled') : sorted).map((it) => it.id),
       items: sorted,
       primary: sorted[0],
       status: STATUS_PRIORITY.find((s) => sorted.some((it) => it.status === s)) || sorted[0].status,
@@ -96,6 +102,8 @@ const StaffReservations = () => {
   const [messagingItem, setMessagingItem] = useState(null);
   const [highlightId, setHighlightId] = useState(null);
   const [expandedLabGroups, setExpandedLabGroups] = useState({});
+  const cancelSel = useCancelSelection();
+  const [cancellingItems, setCancellingItems] = useState(false);
   const [expandedEqGroups, setExpandedEqGroups] = useState({});
 
   const [exportingExcel, setExportingExcel] = useState(false);
@@ -263,7 +271,7 @@ const StaffReservations = () => {
   const toggleEqGroup = (key) => setExpandedEqGroups((prev) => ({ ...prev, [key]: !prev[key] }));
 
   const approveLabGroup = async (group) => {
-    const ids = group.ids;
+    const ids = group.activeIds;
     const label = ids.length > 1 ? `Reservation #RC${String(ids[0]).padStart(5, '0')} (${ids.length} laboratories)` : `Reservation #RC${String(ids[0]).padStart(5, '0')}`;
     const { error } = await supabase.from('reservations').update({
       status: 'reserved',
@@ -282,7 +290,7 @@ const StaffReservations = () => {
     if (!rejectingId) return;
     const group = labGroups.find((g) => g.key === rejectingId);
     if (!group) return;
-    const ids = group.ids;
+    const ids = group.activeIds;
     const label = ids.length > 1 ? `Reservation #RC${String(ids[0]).padStart(5, '0')} (${ids.length} laboratories)` : `Reservation #RC${String(ids[0]).padStart(5, '0')}`;
     const { error } = await supabase.from('reservations').update({
       status: 'rejected',
@@ -301,7 +309,7 @@ const StaffReservations = () => {
   };
 
   const approveEqGroup = async (group) => {
-    const ids = group.ids;
+    const ids = group.activeIds;
     const label = ids.length > 1 ? `Equipment request #EQ${String(ids[0]).padStart(5, '0')} (${ids.length} items)` : `Equipment request #EQ${String(ids[0]).padStart(5, '0')}`;
     const { error } = await supabase.from('equipment_reservations').update({
       status: 'reserved',
@@ -320,7 +328,7 @@ const StaffReservations = () => {
     if (!rejectingEqId) return;
     const group = eqGroups.find((g) => g.key === rejectingEqId);
     if (!group) return;
-    const ids = group.ids;
+    const ids = group.activeIds;
     const label = ids.length > 1 ? `Equipment request #EQ${String(ids[0]).padStart(5, '0')} (${ids.length} items)` : `Equipment request #EQ${String(ids[0]).padStart(5, '0')}`;
     const { error } = await supabase.from('equipment_reservations').update({
       status: 'rejected',
@@ -338,13 +346,57 @@ const StaffReservations = () => {
     setRejectionEqReason('');
   };
 
+  // Cancel only the chosen labs/days (type 'lab') or equipment items (type 'equipment')
+  // of a multi-reservation; the other rows keep their status.
+  const handleCancelItems = async (type, group, ids) => {
+    const items = group.items.filter((it) => ids.includes(it.id) && CANCELLABLE_ITEM_STATUSES.includes(it.status));
+    if (!items.length) return;
+    const fmtDay = (iso) => new Date(iso).toLocaleDateString('en-US', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric' });
+    const describeItem = (it) => (type === 'lab'
+      ? `${it.laboratories?.lab_name || 'Laboratory'} — ${fmtDay(it.start_datetime)}`
+      : `${it.equipment?.name || 'Equipment'} x${it.quantity_reserved}`);
+    const stillActive = group.items.filter((it) => !ids.includes(it.id) && ['pending', 'reserved', 'in_use'].includes(it.status)).length;
+    const note = stillActive === 0 ? '\n\nThis will cancel the whole reservation.' : `\n\nThe other ${stillActive} will stay.`;
+    if (!confirm(`Cancel ${items.length === 1 ? 'this' : `these ${items.length}`}?\n\n${items.map((it) => `• ${describeItem(it)}`).join('\n')}${note}`)) return;
+    setCancellingItems(true);
+    try {
+      const done = await cancelReservationItems(type === 'lab' ? 'reservations' : 'equipment_reservations', items.map((it) => it.id), CANCELLABLE_ITEM_STATUSES);
+      const doneIds = done.map((r) => r.id);
+      if (!doneIds.length) { toast.error('Nothing was cancelled. The status may have changed — please refresh.'); setCancellingItems(false); return; }
+      const cancelledItems = group.items.filter((it) => doneIds.includes(it.id));
+      (type === 'lab' ? setLabItems : setEqItems)((prev) => prev.map((item) => (doneIds.includes(item.id) ? { ...item, status: 'cancelled' } : item)));
+      cancelSel.clear(group.key);
+      logReservationAction({
+        userId: user.id,
+        type,
+        verb: 'Cancelled',
+        items: cancelledItems,
+        note: cancelledItems.map(describeItem).join(', '),
+      });
+      if (group.primary?.user_id) {
+        notifyReservationCancelled({
+          userId: group.primary.user_id,
+          label: type === 'equipment' ? `Equipment request #EQ${String(group.primary.id).padStart(5, '0')}` : `Reservation #RC${String(group.primary.id).padStart(5, '0')}`,
+          detail: cancelledItems.map(describeItem).join(', '),
+          reservationType: type,
+          reservationId: group.primary.id,
+        });
+      }
+      toast.success(cancelledItems.length === 1 ? 'Cancelled 1 item.' : `Cancelled ${cancelledItems.length} items.`);
+    } catch (error) {
+      console.error('Error cancelling selected items:', error);
+      toast.error('Failed to cancel: ' + (error?.message || 'please try again.'));
+    }
+    setCancellingItems(false);
+  };
+
   const changeLabStatus = async (group, status) => {
-    const { error } = await supabase.from('reservations').update({ status }).in('id', group.ids);
+    const { error } = await supabase.from('reservations').update({ status }).in('id', group.activeIds);
     if (error) {
       toast.error(`Failed to update reservation status: ${error.message}`);
       return;
     }
-    setLabItems((prev) => prev.map((item) => group.ids.includes(item.id) ? { ...item, status } : item));
+    setLabItems((prev) => prev.map((item) => group.activeIds.includes(item.id) ? { ...item, status } : item));
     logReservationAction({
       userId: user.id,
       type: 'lab',
@@ -355,12 +407,12 @@ const StaffReservations = () => {
   };
 
   const changeEquipmentStatus = async (group, status) => {
-    const { error } = await supabase.from('equipment_reservations').update({ status }).in('id', group.ids);
+    const { error } = await supabase.from('equipment_reservations').update({ status }).in('id', group.activeIds);
     if (error) {
       toast.error(`Failed to update equipment reservation status: ${error.message}`);
       return;
     }
-    setEqItems((prev) => prev.map((item) => group.ids.includes(item.id) ? { ...item, status } : item));
+    setEqItems((prev) => prev.map((item) => group.activeIds.includes(item.id) ? { ...item, status } : item));
     logReservationAction({
       userId: user.id,
       type: 'equipment',
@@ -568,6 +620,12 @@ const StaffReservations = () => {
                       <p className="text-xs font-bold text-primary uppercase tracking-wider mb-2 flex items-center gap-1.5">
                         <FlaskConical className="w-3.5 h-3.5" /> Laboratories in this Reservation
                       </p>
+                      <SelectedCancelBar
+                        count={cancelSel.get(group.key).length}
+                        disabled={cancellingItems}
+                        onClear={() => cancelSel.clear(group.key)}
+                        onCancel={() => handleCancelItems('lab', group, cancelSel.get(group.key))}
+                      />
                       <div className="space-y-2">
                         {group.items.map((it) => (
                           <div key={it.id} className="bg-card border border-border rounded-lg px-3 py-2.5 text-xs flex flex-wrap items-center justify-between gap-2">
@@ -576,7 +634,16 @@ const StaffReservations = () => {
                               <code className="bg-muted px-1 py-0.5 rounded text-[0.7rem]">{it.laboratories?.lab_code}</code>
                               <span className="text-muted-foreground ml-2">{fmt(it.start_datetime)} – {fmt(it.end_datetime)}</span>
                             </div>
-                            <StatusBadge status={it.status} />
+                            <div className="flex items-center gap-2">
+                              <StatusBadge status={it.status} />
+                              <ItemCancelControls
+                                checked={cancelSel.has(group.key, it.id)}
+                                onToggle={() => cancelSel.toggle(group.key, it.id)}
+                                canCancel={CANCELLABLE_ITEM_STATUSES.includes(it.status)}
+                                disabled={cancellingItems}
+                                onCancel={() => handleCancelItems('lab', group, [it.id])}
+                              />
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -718,6 +785,12 @@ const StaffReservations = () => {
                       <p className="text-xs font-bold text-primary uppercase tracking-wider mb-2 flex items-center gap-1.5">
                         <Package className="w-3.5 h-3.5" /> Equipment in this Request
                       </p>
+                      <SelectedCancelBar
+                        count={cancelSel.get(group.key).length}
+                        disabled={cancellingItems}
+                        onClear={() => cancelSel.clear(group.key)}
+                        onCancel={() => handleCancelItems('equipment', group, cancelSel.get(group.key))}
+                      />
                       <div className="flex flex-wrap gap-2">
                         {group.items.map((it) => (
                           <div key={it.id} className="bg-card border border-border rounded-lg px-3 py-2 text-xs flex items-center gap-2">
@@ -725,6 +798,13 @@ const StaffReservations = () => {
                             {it.equipment?.brand && <span className="text-muted-foreground">{it.equipment.brand}</span>}
                             <span className="bg-primary/10 text-primary font-bold px-1.5 py-0.5 rounded">x{it.quantity_reserved}</span>
                             <StatusBadge status={it.status} />
+                            <ItemCancelControls
+                              checked={cancelSel.has(group.key, it.id)}
+                              onToggle={() => cancelSel.toggle(group.key, it.id)}
+                              canCancel={CANCELLABLE_ITEM_STATUSES.includes(it.status)}
+                              disabled={cancellingItems}
+                              onCancel={() => handleCancelItems('equipment', group, [it.id])}
+                            />
                           </div>
                         ))}
                       </div>

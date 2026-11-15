@@ -1,4 +1,5 @@
-import { MoreVertical } from 'lucide-react';
+import { useState, useCallback } from 'react';
+import { MoreVertical, Trash2, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import {
   DropdownMenu,
@@ -115,6 +116,91 @@ const RowActions = ({ items = [], label = 'Actions', align = 'end', className })
         })}
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+};
+
+
+/**
+ * Helpers for cancelling only SOME of the labs / days / equipment inside a
+ * multi-reservation (rows that share a batch_id).
+ *
+ * Usage in a page:
+ *   const cancelSel = useCancelSelection();
+ *   ... inside the expanded rows of a group:
+ *   <ItemCancelControls
+ *     checked={cancelSel.has(group.key, it.id)}
+ *     onToggle={() => cancelSel.toggle(group.key, it.id)}
+ *     canCancel={CANCELLABLE.includes(it.status)}
+ *     onCancel={() => handleCancelItems(group, [it.id])}
+ *   />
+ *   <SelectedCancelBar count={cancelSel.get(group.key).length} onCancel={...} onClear={() => cancelSel.clear(group.key)} />
+ */
+export const useCancelSelection = () => {
+  const [selected, setSelected] = useState({});
+
+  const get = useCallback((groupKey) => selected[groupKey] || [], [selected]);
+  const has = useCallback((groupKey, id) => (selected[groupKey] || []).includes(id), [selected]);
+  const toggle = useCallback((groupKey, id) => {
+    setSelected((prev) => {
+      const cur = prev[groupKey] || [];
+      return { ...prev, [groupKey]: cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id] };
+    });
+  }, []);
+  const clear = useCallback((groupKey) => setSelected((prev) => ({ ...prev, [groupKey]: [] })), []);
+
+  return { get, has, toggle, clear };
+};
+
+/** Checkbox + "Cancel" button for one lab/day/equipment row. Renders nothing if it can't be cancelled. */
+export const ItemCancelControls = ({ checked, onToggle, canCancel, onCancel, disabled = false }) => {
+  if (!canCancel) return null;
+  return (
+    <div className="inline-flex items-center gap-2">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={onToggle}
+        disabled={disabled}
+        aria-label="Select to cancel"
+        className="w-3.5 h-3.5 cursor-pointer accent-[var(--color-destructive,#dc2626)]"
+      />
+      <button
+        type="button"
+        onClick={onCancel}
+        disabled={disabled}
+        className="bg-destructive/10 text-destructive border border-destructive/20 px-2 py-0.5 rounded text-[0.7rem] font-semibold cursor-pointer hover:bg-destructive hover:text-destructive-foreground transition-colors inline-flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        <Trash2 className="w-3 h-3" /> Cancel
+      </button>
+    </div>
+  );
+};
+
+/** Bar shown above a group's rows once one or more rows are ticked. */
+export const SelectedCancelBar = ({ count, onCancel, onClear, disabled = false }) => {
+  if (!count) return null;
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 mb-2 px-3 py-2 rounded-lg bg-destructive/5 border border-destructive/20 text-xs">
+      <span className="font-semibold text-foreground">{count} selected</span>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onClear}
+          disabled={disabled}
+          className="px-2.5 py-1 rounded border border-border bg-card text-foreground font-semibold cursor-pointer hover:bg-muted inline-flex items-center gap-1 disabled:opacity-50"
+        >
+          <X className="w-3 h-3" /> Clear
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={disabled}
+          className="px-2.5 py-1 rounded bg-destructive text-destructive-foreground font-semibold border-none cursor-pointer hover:opacity-90 inline-flex items-center gap-1 disabled:opacity-50"
+        >
+          <Trash2 className="w-3 h-3" /> Cancel selected
+        </button>
+      </div>
+    </div>
   );
 };
 
