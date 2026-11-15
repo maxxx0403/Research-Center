@@ -11,6 +11,8 @@ import { CVSU_COLLEGES } from '@/lib/cvsuColleges';
 import { validateReservationFields, sanitizeText } from '@/lib/validation';
 import { earliestBookableInput, earliestBookableLabel, manilaInputToISO, validateBookingDateTime, spansNonOfficialDay, MIN_ADVANCE_DAYS } from '@/lib/timezone';
 import PendingReservationDateNotice from '@/components/PendingReservationDateNotice';
+import DailySchedule from '@/components/DailySchedule';
+import { emptySchedule, buildSlots, validateSlots, isRangeTooLong, labelDate, MAX_BOOKING_DAYS } from '@/lib/dailySchedule';
 import {
   fetchPendingReservationCounts,
   getFullPendingReservationDate,
@@ -35,8 +37,8 @@ const UserReserveEquipment = () => {
 
   const [equipment, setEquipment] = useState([]);
   const [items, setItems] = useState([emptyItem(preId)]);
-  const [startDatetime, setStartDatetime] = useState('');
-  const [endDatetime, setEndDatetime] = useState('');
+  // Dates are chosen once; every date gets its own start and end time.
+  const [schedule, setSchedule] = useState(emptySchedule());
   const [stakeholderChoice, setStakeholderChoice] = useState('');
   const { options: stakeholderOptions, autoValue: autoStakeholder } = getStakeholderConfig(user?.email);
   // Non-CvSU emails (e.g. gmail.com) are auto-set; CvSU emails choose Student / Faculty.
@@ -97,6 +99,24 @@ const UserReserveEquipment = () => {
   const equipmentOptionsFor = (idx) =>
     equipment.filter((eq) => eq.id === items[idx].equipmentId || !equipmentIdsInUse.includes(eq.id));
 
+  // Fri-Sun dates are only bookable when every selected equipment allows non-official hours.
+  const allowNonOfficial =
+    items.length > 0 &&
+    items.every((it) => !!equipment.find((e) => e.id === it.equipmentId)?.allow_non_official_hours);
+  const slotsForSchedule = () => buildSlots(schedule, { allowNonOfficial });
+  const blockingEquipment = items
+    .map((it) => equipment.find((e) => e.id === it.equipmentId))
+    .filter((eq) => eq && !eq.allow_non_official_hours)
+    .map((eq) => eq.name);
+
+  const updateScheduleDate = (field, value) => {
+    setSchedule((prev) => {
+      const next = { ...prev, [field]: value };
+      if (next.startDate && next.endDate && next.endDate < next.startDate) next.endDate = '';
+      return next;
+    });
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -142,15 +162,14 @@ const UserReserveEquipment = () => {
     }
 
     // Friday-Sunday is decided per equipment (each item has its own ON/OFF switch).
-    for (const it of items) {
-      const eq = equipment.find((e) => e.id === it.equipmentId);
-      if (!eq?.allow_non_official_hours && spansNonOfficialDay(startDatetime, endDatetime)) {
-        triggerError(`"${eq?.name || 'This equipment'}" is not accepting reservations on Fridays to Sundays (non-official hours). Please select Monday to Thursday.`);
-        return;
-      }
+    // A Fri-Sun date is only bookable when EVERY selected equipment allows it;
+    // otherwise it is shown as "not available" and left out of the booking.
+    if (isRangeTooLong(schedule)) {
+      triggerError(`You can book at most ${MAX_BOOKING_DAYS} dates in one reservation.`);
+      return;
     }
-
-    const dtError = validateDateTime(startDatetime, endDatetime, true);
+    const slots = slotsForSchedule();
+    const dtError = validateSlots(slots, { subject: 'This equipment' });
     if (dtError) {
       triggerError(dtError);
       return;
@@ -195,7 +214,7 @@ const UserReserveEquipment = () => {
 
     let pendingCounts;
     try {
-      pendingCounts = await fetchPendingReservationCounts([startDatetime.slice(0, 10)]);
+      pendingCounts = await fetchPendingReservationCounts([...new Set(slotsForSchedule().map((slot) => slot.date))]);
     } catch (countError) {
       console.error('Error checking pending reservation limit:', countError);
       triggerError('Could not verify pending bookings for the selected date. Please try again.');
@@ -208,7 +227,9 @@ const UserReserveEquipment = () => {
       return;
     }
 
-    const batchId = items.length > 1 && crypto?.randomUUID ? crypto.randomUUID() : null;
+    // One row per equipment per booked date; several rows share one batch_id (one reference).
+    const finalSlots = slotsForSchedule();
+    const batchId = items.length * finalSlots.length > 1 && crypto?.randomUUID ? crypto.randomUUID() : null;
 
     const sharedFields = {
       user_id: user.id,
@@ -216,8 +237,6 @@ const UserReserveEquipment = () => {
       email: rawFields.email.trim(),
       phone: rawFields.phone ? rawFields.phone.trim() : null,
       purpose: sanitizeText(rawFields.research_purpose, { maxLength: 1000 }),
-      start_datetime: manilaInputToISO(startDatetime),
-      end_datetime: manilaInputToISO(endDatetime),
       special_requirements: sanitizeText(form.get('special_requirements'), { maxLength: 500 }),
       adviser_name: sanitizeText(adviserName, { maxLength: 150 }),
       study_title: sanitizeText(rawFields.study_title, { maxLength: 300 }),
@@ -230,11 +249,15 @@ const UserReserveEquipment = () => {
         .map((m) => `${sanitizeText(m.name, { maxLength: 150 })} — Student No. ${sanitizeText(m.studentNumber, { maxLength: 50 })}`),
     };
 
-    const rows = items.map((it) => ({
-      ...sharedFields,
-      equipment_id: it.equipmentId,
-      quantity_reserved: it.quantity,
-    }));
+    const rows = finalSlots.flatMap((slot) =>
+      items.map((it) => ({
+        ...sharedFields,
+        start_datetime: manilaInputToISO(slot.startDatetime),
+        end_datetime: manilaInputToISO(slot.endDatetime),
+        equipment_id: it.equipmentId,
+        quantity_reserved: it.quantity,
+      }))
+    );
 
     const { data, error: err } = await supabase
       .from('equipment_reservations')
@@ -258,8 +281,7 @@ const UserReserveEquipment = () => {
     setSuccess(false);
     setReservationIds([]);
     setItems([emptyItem()]);
-    setStartDatetime('');
-    setEndDatetime('');
+    setSchedule(emptySchedule());
     setStakeholderChoice('');
     setUnitCollege('');
     setMembers([{ name: '' }]);
@@ -702,24 +724,32 @@ const UserReserveEquipment = () => {
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                 <div>
                   <label className="block mb-1.5 font-semibold text-xs text-muted-foreground">
-                    Start Date & Time
+                    Start Date
                   </label>
-                  <BookingDateTimeInput value={startDatetime} onChange={(v) => setStartDatetime(v)} min={getMinDatetimeLocal()}
-                          required
-                          className={inputClass}
-                        />
-                  <PendingReservationDateNotice date={startDatetime.slice(0, 10)} />
+                  <BookingDateTimeInput dateOnly value={schedule.startDate ? `${schedule.startDate}T00:00` : ''} onChange={(v) => updateScheduleDate('startDate', v.slice(0, 10))} min={getMinDatetimeLocal()}
+                    required
+                    className={inputClass}
+                  />
                 </div>
                 <div>
                   <label className="block mb-1.5 font-semibold text-xs text-muted-foreground">
-                    End Date & Time
+                    End Date <span className="font-normal">(only if booking more than one date)</span>
                   </label>
-                  <BookingDateTimeInput value={endDatetime} onChange={(v) => setEndDatetime(v)} min={startDatetime || getMinDatetimeLocal()}
-                          required
-                          className={inputClass}
-                        />
+                  <BookingDateTimeInput dateOnly value={schedule.endDate ? `${schedule.endDate}T00:00` : ''} onChange={(v) => updateScheduleDate('endDate', v.slice(0, 10))} min={schedule.startDate ? `${schedule.startDate}T00:00` : getMinDatetimeLocal()}
+                    className={inputClass}
+                  />
                 </div>
               </div>
+              <DailySchedule
+                startDate={schedule.startDate}
+                endDate={schedule.endDate}
+                dayTimes={schedule.dayTimes}
+                skipped={schedule.skipped}
+                allowNonOfficial={allowNonOfficial}
+                unavailableNote={blockingEquipment.length ? `${blockingEquipment.join(', ')} ${blockingEquipment.length > 1 ? 'are' : 'is'} not accepting reservations on Fridays to Sundays (non-official hours).` : 'Friday to Sunday are non-official hours.'}
+                onChange={({ dayTimes, skipped }) => setSchedule((prev) => ({ ...prev, dayTimes, skipped }))}
+                selectClass={inputClass}
+              />
             </div>
           </div>
         </div>

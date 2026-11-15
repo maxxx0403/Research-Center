@@ -97,7 +97,7 @@ const useIsWide = () => {
 // Layout: date and time sit side by side when there is room and wrap onto two
 // lines on narrow columns (phone / tablet). The calendar is a bottom sheet on
 // phones and a popover from tablet width up.
-const BookingDateTimeInput = ({ value, onChange, min, required, className = '' }) => {
+const BookingDateTimeInput = ({ value, onChange, min, required, className = '', dateOnly = false }) => {
   const initialDate = value ? value.slice(0, 10) : '';
   const [date, setDate] = useState(initialDate);
   const [text, setText] = useState(isoToDisplay(initialDate));
@@ -132,7 +132,7 @@ const BookingDateTimeInput = ({ value, onChange, min, required, className = '' }
   }, [value]);
 
   const emit = (d, t) => {
-    const out = d && t ? `${d}T${t}` : '';
+    const out = d && (dateOnly || t) ? `${d}T${dateOnly ? '00:00' : t}` : '';
     lastEmitted.current = out;
     onChange(out);
   };
@@ -370,6 +370,7 @@ const BookingDateTimeInput = ({ value, onChange, min, required, className = '' }
         {error && <p className="mt-1 text-xs font-semibold text-destructive">{error}</p>}
       </div>
 
+      {!dateOnly && (
       <select
         value={time}
         required={required}
@@ -384,10 +385,12 @@ const BookingDateTimeInput = ({ value, onChange, min, required, className = '' }
           <option key={t} value={t} className="bg-background text-foreground">{format12h(t)}</option>
         ))}
       </select>
+      )}
 
       {open && createPortal(calendar, document.body)}
     </div>
   );
 };
 
+export { TIME_OPTIONS, format12h };
 export default BookingDateTimeInput;

@@ -15,6 +15,8 @@ import {
 import { validateReservationFields, sanitizeText } from '@/lib/validation';
 import { earliestBookableInput, earliestBookableLabel, manilaInputToISO, validateBookingDateTime, spansNonOfficialDay, MIN_ADVANCE_DAYS } from '@/lib/timezone';
 import PendingReservationDateNotice from '@/components/PendingReservationDateNotice';
+import DailySchedule from '@/components/DailySchedule';
+import { emptySchedule, buildSlots, validateSlots, describeSlots, isRangeTooLong, isNonOfficialDate, labelDate, MAX_BOOKING_DAYS } from '@/lib/dailySchedule';
 import {
   fetchPendingReservationCounts,
   getFullPendingReservationDate,
@@ -41,8 +43,9 @@ const UserReserve = () => {
   const [tempId] = useState(() => `RC-TMP-${Math.floor(100000 + Math.random() * 900000)}`);
 
   const [selectedLabs, setSelectedLabs] = useState([
-    { labId: preLabId || 0, startDatetime: '', endDatetime: '' },
+    { labId: preLabId || 0, ...emptySchedule() },
   ]);
+  const [submittedCount, setSubmittedCount] = useState(0);
   const [selectedEquipments, setSelectedEquipments] = useState([]);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
@@ -79,7 +82,7 @@ const UserReserve = () => {
   };
 
   const addLab = () => {
-    setSelectedLabs([...selectedLabs, { labId: 0, startDatetime: '', endDatetime: '' }]);
+    setSelectedLabs([...selectedLabs, { labId: 0, ...emptySchedule() }]);
   };
 
   const removeLab = (idx) => {
@@ -91,6 +94,25 @@ const UserReserve = () => {
     updated[idx] = { ...updated[idx], [field]: value };
     setSelectedLabs(updated);
   };
+
+  // Start / end DATE of a lab entry (times are chosen per date below).
+  const updateLabDate = (idx, field, value) => {
+    const updated = [...selectedLabs];
+    const next = { ...updated[idx], [field]: value };
+    if (next.startDate && next.endDate && next.endDate < next.startDate) next.endDate = '';
+    updated[idx] = next;
+    setSelectedLabs(updated);
+  };
+
+  const updateLabDayTimes = (idx, { dayTimes, skipped }) => {
+    const updated = [...selectedLabs];
+    updated[idx] = { ...updated[idx], dayTimes, skipped };
+    setSelectedLabs(updated);
+  };
+
+  const labAllowsNonOfficial = (labId) => !!labs.find((l) => l.id === labId)?.allow_non_official_hours;
+  // The dates that will really be booked for a lab entry (one slot per date, each with its own times).
+  const slotsFor = (entry) => buildSlots(entry, { allowNonOfficial: labAllowsNonOfficial(entry.labId) });
 
   const addEquipment = (eqId) => {
     if (!selectedEquipments.find((e) => e.equipmentId === eqId)) {
@@ -215,27 +237,36 @@ const UserReserve = () => {
       if (!entry.labId || entry.labId === 0) continue;
       const entryLab = labs.find((l) => l.id === entry.labId);
       const labName = entryLab?.lab_name || `Lab #${i + 1}`;
-      const dtError = validateDateTime(entry.startDatetime, entry.endDatetime, !!entryLab?.allow_non_official_hours);
+      if (isRangeTooLong(entry)) {
+        triggerError(`${labName}: you can book at most ${MAX_BOOKING_DAYS} dates in one reservation.`);
+        return;
+      }
+      const dtError = validateSlots(slotsFor(entry));
       if (dtError) {
         triggerError(`${labName}: ${dtError}`);
         return;
       }
     }
 
-    const validLabs = selectedLabs.filter((e) => e.labId > 0);
+    // One slot per booked date, each with its own start and end time.
+    const validLabs = selectedLabs
+      .filter((e) => e.labId > 0)
+      .map((e) => ({ ...e, slots: slotsFor(e) }));
 
     for (const entry of validLabs) {
-      const { hasConflict, conflicts } = await checkLabReservationConflict(
-        entry.labId,
-        entry.startDatetime,
-        entry.endDatetime
-      );
-      if (hasConflict) {
-        const labName = labs.find((l) => l.id === entry.labId)?.lab_name || `Lab #${entry.labId}`;
-        triggerError(
-          `Conflict detected for ${labName}! ${conflicts.length} existing reservation(s) overlap with your requested time.`
+      for (const slot of entry.slots) {
+        const { hasConflict, conflicts } = await checkLabReservationConflict(
+          entry.labId,
+          slot.startDatetime,
+          slot.endDatetime
         );
-        return;
+        if (hasConflict) {
+          const labName = labs.find((l) => l.id === entry.labId)?.lab_name || `Lab #${entry.labId}`;
+          triggerError(
+            `Conflict detected for ${labName} on ${labelDate(slot.date)}! ${conflicts.length} existing reservation(s) overlap with your requested time.`
+          );
+          return;
+        }
       }
     }
 
@@ -247,25 +278,27 @@ const UserReserve = () => {
         triggerError(`Please select which lab will use "${eqName}".`);
         return;
       }
-      if (!eqData?.allow_non_official_hours && spansNonOfficialDay(assignedLab.startDatetime, assignedLab.endDatetime)) {
+      if (!eqData?.allow_non_official_hours && assignedLab.slots.some((slot) => isNonOfficialDate(slot.date))) {
         triggerError(`"${eqName}" is not available on Fridays to Sundays (non-official hours). Please choose another equipment or a Monday to Thursday schedule.`);
         return;
       }
-      const { hasConflict: eqConflict } = await checkEquipmentAvailability(
-        [eq],
-        assignedLab.startDatetime,
-        assignedLab.endDatetime
-      );
-      if (eqConflict) {
-        triggerError(`"${eqName}" is not available during the selected lab schedule. Please choose a different equipment or time.`);
-        return;
+      for (const slot of assignedLab.slots) {
+        const { hasConflict: eqConflict } = await checkEquipmentAvailability(
+          [eq],
+          slot.startDatetime,
+          slot.endDatetime
+        );
+        if (eqConflict) {
+          triggerError(`"${eqName}" is not available on ${labelDate(slot.date)} during the selected lab schedule. Please choose a different equipment or time.`);
+          return;
+        }
       }
     }
 
     let pendingCounts;
     try {
       pendingCounts = await fetchPendingReservationCounts(
-        validLabs.map((entry) => entry.startDatetime.slice(0, 10))
+        [...new Set(validLabs.flatMap((entry) => entry.slots.map((slot) => slot.date)))]
       );
     } catch (countError) {
       console.error('Error checking pending reservation limit:', countError);
@@ -309,19 +342,27 @@ const UserReserve = () => {
       status: 'pending',
     };
 
-    // When the request covers more than one laboratory, tag every row with
-    // the same batch_id so the whole submission is treated as a single
-    // reservation (one reference/one row) across the admin, staff, and
-    // "My Reservations" views instead of showing up as N separate entries.
-    const batchId = validLabs.length > 1 && crypto?.randomUUID ? crypto.randomUUID() : null;
+    // When the request covers more than one laboratory OR more than one date, tag
+    // every row with the same batch_id so the whole submission is treated as a
+    // single reservation (one reference) across the admin, staff, and
+    // "My Reservations" views. Each date is its own row with its own times.
+    const totalRows = validLabs.reduce((n, entry) => n + entry.slots.length, 0);
+    const batchId = totalRows > 1 && crypto?.randomUUID ? crypto.randomUUID() : null;
 
-    const labRows = validLabs.map((entry) => ({
-      ...commonFields,
-      laboratory_id: entry.labId,
-      start_datetime: manilaInputToISO(entry.startDatetime),
-      end_datetime: manilaInputToISO(entry.endDatetime),
-      batch_id: batchId,
-    }));
+    const labRows = [];
+    const rowLabIdx = []; // which lab entry each row belongs to (same order as labRows)
+    validLabs.forEach((entry, labIdx) => {
+      entry.slots.forEach((slot) => {
+        labRows.push({
+          ...commonFields,
+          laboratory_id: entry.labId,
+          start_datetime: manilaInputToISO(slot.startDatetime),
+          end_datetime: manilaInputToISO(slot.endDatetime),
+          batch_id: batchId,
+        });
+        rowLabIdx.push(labIdx);
+      });
+    });
 
     const { data: insertedLabs, error: labInsertErr } = await supabase
       .from('reservations')
@@ -337,25 +378,27 @@ const UserReserve = () => {
       return;
     }
 
-    const labReservationIds = {};
-    insertedLabs.forEach((row, i) => {
-      labReservationIds[i] = row.id;
-    });
     // The batch's reference ID is its lowest row ID, matching the
     // convention already used for equipment batches.
     const lastId = Math.min(...insertedLabs.map((r) => r.id));
 
+    // Equipment follows the schedule of its lab: one link per booked date.
+    const equipmentRows = [];
     for (const eq of selectedEquipments) {
-      const labIdx = eq.labIdx ?? 0;
-      const reservationId = labReservationIds[labIdx] ?? labReservationIds[0];
-      if (!reservationId) continue;
-
-      const { error: eqResErr } = await supabase.from('reservation_equipment').insert({
-        reservation_id: reservationId,
-        equipment_id: eq.equipmentId,
-        quantity_reserved: eq.quantity,
+      const wanted = validLabs[eq.labIdx ?? 0] ? (eq.labIdx ?? 0) : 0;
+      rowLabIdx.forEach((labIdx, rowIdx) => {
+        if (labIdx === wanted && insertedLabs[rowIdx]) {
+          equipmentRows.push({
+            reservation_id: insertedLabs[rowIdx].id,
+            equipment_id: eq.equipmentId,
+            quantity_reserved: eq.quantity,
+          });
+        }
       });
+    }
 
+    if (equipmentRows.length > 0) {
+      const { error: eqResErr } = await supabase.from('reservation_equipment').insert(equipmentRows);
       if (eqResErr) {
         triggerError('Reservation saved but failed to link equipment: ' + eqResErr.message);
         return;
@@ -365,6 +408,7 @@ const UserReserve = () => {
     sendReservationEmail({ event: 'new', reservationType: 'lab', ids: insertedLabs.map((r) => r.id) });
 
     setReservationId(lastId);
+    setSubmittedCount(insertedLabs.length);
     setSuccess(true);
     setLoading(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -406,7 +450,8 @@ const UserReserve = () => {
     setSuccess(false);
     setReservationId(0);
     setSelectedEquipments([]);
-    setSelectedLabs([{ labId: 0, startDatetime: '', endDatetime: '' }]);
+    setSelectedLabs([{ labId: 0, ...emptySchedule() }]);
+    setSubmittedCount(0);
     setStakeholderChoice('');
     setUnitCollege('');
     setMembers([{ name: '' }]);
@@ -414,7 +459,7 @@ const UserReserve = () => {
   };
 
   if (success) {
-    const labCount = selectedLabs.filter((e) => e.labId > 0).length;
+    const labCount = submittedCount;
     return (
       <div className="max-w-[560px] mx-auto">
         <button
@@ -436,7 +481,7 @@ const UserReserve = () => {
           </p>
           {labCount > 1 && (
             <p className="text-xs text-muted-foreground mb-8">
-              {labCount} laboratory reservations were submitted.
+              {labCount} reservation entries (one per lab and date) were submitted under this reference.
             </p>
           )}
           <div className={`flex gap-4 justify-center flex-wrap ${labCount > 1 ? '' : 'mt-8'}`}>
@@ -840,24 +885,32 @@ const UserReserve = () => {
                     <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                       <div>
                         <label className="block mb-1.5 font-semibold text-xs text-muted-foreground">
-                          Start Date & Time
+                          Start Date
                         </label>
-                        <BookingDateTimeInput value={entry.startDatetime} onChange={(v) => updateLabField(idx, 'startDatetime', v)} min={getMinDatetimeLocal()}
+                        <BookingDateTimeInput dateOnly value={entry.startDate ? `${entry.startDate}T00:00` : ''} onChange={(v) => updateLabDate(idx, 'startDate', v.slice(0, 10))} min={getMinDatetimeLocal()}
                           required
                           className={inputClass}
                         />
-                        <PendingReservationDateNotice date={entry.startDatetime.slice(0, 10)} />
                       </div>
                       <div>
                         <label className="block mb-1.5 font-semibold text-xs text-muted-foreground">
-                          End Date & Time
+                          End Date <span className="font-normal">(only if booking more than one date)</span>
                         </label>
-                        <BookingDateTimeInput value={entry.endDatetime} onChange={(v) => updateLabField(idx, 'endDatetime', v)} min={entry.startDatetime || getMinDatetimeLocal()}
-                          required
+                        <BookingDateTimeInput dateOnly value={entry.endDate ? `${entry.endDate}T00:00` : ''} onChange={(v) => updateLabDate(idx, 'endDate', v.slice(0, 10))} min={entry.startDate ? `${entry.startDate}T00:00` : getMinDatetimeLocal()}
                           className={inputClass}
                         />
                       </div>
                     </div>
+                    <DailySchedule
+                      startDate={entry.startDate}
+                      endDate={entry.endDate}
+                      dayTimes={entry.dayTimes}
+                      skipped={entry.skipped}
+                      allowNonOfficial={labAllowsNonOfficial(entry.labId)}
+                      unavailableNote="Friday to Sunday are non-official hours; this laboratory is not accepting reservations on those days."
+                      onChange={(v) => updateLabDayTimes(idx, v)}
+                      selectClass={inputClass}
+                    />
                   </div>
                 </div>
               );
@@ -961,9 +1014,8 @@ const UserReserve = () => {
                               className="w-full px-3 py-2 border-2 border-border rounded-xl text-sm bg-card text-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10"
                               options={validLabs.map((entry, idx) => {
                                 const lab = labs.find((l) => l.id === entry.labId);
-                                const when = entry.startDatetime
-                                  ? ` — ${new Date(manilaInputToISO(entry.startDatetime)).toLocaleDateString('en-US', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric' })} ${new Date(manilaInputToISO(entry.startDatetime)).toLocaleTimeString('en-US', { timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit' })}`
-                                  : '';
+                                const desc = describeSlots(slotsFor(entry));
+                                const when = desc ? ` — ${desc}` : '';
                                 return { value: idx, label: `${lab?.lab_name || `Lab #${idx + 1}`}${when}` };
                               })}
                             />
@@ -974,7 +1026,7 @@ const UserReserve = () => {
                             return (
                               <p className="text-xs text-muted-foreground mt-1.5 flex items-center gap-1">
                                 <Clock className="w-3 h-3" />
-                                Schedule will follow: {assignedLab.startDatetime ? `${new Date(manilaInputToISO(assignedLab.startDatetime)).toLocaleString('en-US', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} – ${new Date(manilaInputToISO(assignedLab.endDatetime)).toLocaleTimeString('en-US', { timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit' })}` : 'set the lab schedule above'}
+                                Schedule will follow: {describeSlots(slotsFor(assignedLab)) || 'set the lab schedule above'}
                               </p>
                             );
                           })()}
