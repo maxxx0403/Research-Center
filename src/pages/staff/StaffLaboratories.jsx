@@ -1,17 +1,32 @@
 import { useState, useEffect } from 'react';
-import { Search, Minus, Plus, UserPlus, RefreshCw } from 'lucide-react';
+import { Search, Minus, Plus, UserPlus, RefreshCw, Pencil, X } from 'lucide-react';
 import RowActions from '@/components/RowActions';
 import StatusBadge from '@/components/StatusBadge';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import NonOfficialToggle, { NonOfficialBulk, saveNonOfficialHours } from '@/components/NonOfficialToggle';
+import { logCatalogAction, summarizeChanges } from '@/lib/activityLog';
+import { catalogDuplicateErrorMessage, isDuplicateLaboratory } from '@/lib/catalogValidation';
+
+const LAB_FIELDS = [
+  { key: 'lab_name', label: 'Name' },
+  { key: 'lab_code', label: 'Code' },
+  { key: 'floor', label: 'Floor' },
+  { key: 'description', label: 'Description' },
+  { key: 'max_capacity', label: 'Max capacity' },
+  { key: 'equipment_list', label: 'Equipment list' },
+];
+const inputCls = "w-full px-3 py-2.5 border border-border rounded-lg text-sm bg-card text-foreground focus:outline-none focus:border-primary";
 
 const StaffLaboratories = () => {
-  const { assignedRoomIds } = useAuth();
+  const { user, assignedRoomIds } = useAuth();
   const [labs, setLabs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [editTarget, setEditTarget] = useState(null);
+  const [form, setForm] = useState(null);
+  const [saving, setSaving] = useState(false);
 
   const loadLabs = async () => {
     let query = supabase.from('laboratories').select('*').order('lab_code');
@@ -27,6 +42,7 @@ const StaffLaboratories = () => {
     const { error } = await supabase.from('laboratories').update({ status: newStatus }).eq('id', lab.id);
     if (error) { toast.error('Failed to update status: ' + error.message); return; }
     setLabs((prev) => prev.map((l) => l.id === lab.id ? { ...l, status: newStatus } : l));
+    logCatalogAction({ userId: user?.id, type: 'laboratory', verb: 'Updated', item: lab, laboratoryIds: [lab.id], detail: `Status: ${lab.status} → ${newStatus}` });
     toast.success(`${lab.lab_name} marked as ${newStatus}.`);
   };
 
@@ -50,6 +66,55 @@ const StaffLaboratories = () => {
     setLabs((prev) => prev.map((l) => l.id === lab.id ? { ...l, ...updates } : l));
   };
 
+  const openEdit = (lab) => {
+    setEditTarget(lab);
+    setForm({
+      lab_name: lab.lab_name || '',
+      lab_code: lab.lab_code || '',
+      floor: lab.floor || '',
+      description: lab.description || '',
+      max_capacity: lab.max_capacity ? String(lab.max_capacity) : '',
+      equipment_list: lab.equipment_list || '',
+    });
+  };
+
+  const closeEdit = () => { setEditTarget(null); setForm(null); };
+
+  const handleFormChange = (e) => setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    if (!editTarget || !form) return;
+    if (!form.lab_name.trim() || !form.lab_code.trim()) { toast.error('Lab name and code are required.'); return; }
+    const payload = {
+      lab_name: form.lab_name.trim(),
+      lab_code: form.lab_code.trim().toUpperCase(),
+      floor: form.floor.trim() || null,
+      description: form.description.trim() || null,
+      max_capacity: form.max_capacity ? Number(form.max_capacity) : 0,
+      equipment_list: form.equipment_list.trim() || null,
+    };
+    if (isDuplicateLaboratory(labs, payload, editTarget.id)) {
+      toast.error('A laboratory with the same code or the same name and floor already exists.');
+      return;
+    }
+    setSaving(true);
+    const { data, error } = await supabase.from('laboratories').update(payload).eq('id', editTarget.id).select().single();
+    setSaving(false);
+    if (error) { toast.error(catalogDuplicateErrorMessage(error, 'update')); return; }
+    setLabs((prev) => prev.map((l) => (l.id === editTarget.id ? data : l)));
+    logCatalogAction({
+      userId: user?.id,
+      type: 'laboratory',
+      verb: 'Updated',
+      item: data,
+      laboratoryIds: [data.id],
+      detail: summarizeChanges(editTarget, data, LAB_FIELDS),
+    });
+    toast.success(`${data.lab_name} updated successfully!`);
+    closeEdit();
+  };
+
   const filtered = labs.filter((l) =>
   !search ||
   l.lab_name.toLowerCase().includes(search.toLowerCase()) ||
@@ -61,6 +126,7 @@ const StaffLaboratories = () => {
     const error = await saveNonOfficialHours('laboratories', [lab.id], value);
     if (error) { toast.error('Failed to update: ' + error.message); return; }
     setLabs((prev) => prev.map((l) => (l.id === lab.id ? { ...l, allow_non_official_hours: value } : l)));
+    logCatalogAction({ userId: user?.id, type: 'laboratory', verb: 'Updated', item: lab, laboratoryIds: [lab.id], detail: `Friday–Sunday bookings: ${value ? 'ON' : 'OFF'}` });
     toast.success(`${lab.lab_name}: Friday–Sunday bookings ${value ? 'ON' : 'OFF'}.`);
   };
 
@@ -69,7 +135,9 @@ const StaffLaboratories = () => {
     if (!ids.length) return;
     const error = await saveNonOfficialHours('laboratories', ids, value);
     if (error) { toast.error('Failed to update: ' + error.message); return; }
+    const changed = labs.filter((l) => ids.includes(l.id) && !!l.allow_non_official_hours !== value);
     setLabs((prev) => prev.map((l) => (ids.includes(l.id) ? { ...l, allow_non_official_hours: value } : l)));
+    changed.forEach((l) => logCatalogAction({ userId: user?.id, type: 'laboratory', verb: 'Updated', item: l, laboratoryIds: [l.id], detail: `Friday–Sunday bookings: ${value ? 'ON' : 'OFF'}` }));
     toast.success(`Friday–Sunday bookings turned ${value ? 'ON' : 'OFF'} for ${ids.length} laborator${ids.length === 1 ? 'y' : 'ies'}.`);
   };
 
@@ -120,6 +188,7 @@ const StaffLaboratories = () => {
                   <StatusBadge status={lab.status} />
                   <RowActions
                     items={[
+                      { label: 'Edit', icon: Pencil, onClick: () => openEdit(lab) },
                       {
                         label: 'Change status',
                         icon: RefreshCw,
@@ -180,6 +249,50 @@ const StaffLaboratories = () => {
         })}
         </div>
       }
+      {editTarget && form && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-card rounded-xl shadow-lg w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="px-6 py-4 border-b border-border flex justify-between items-center">
+              <h3 className="font-heading text-base font-bold">Edit Laboratory</h3>
+              <button type="button" onClick={closeEdit} className="bg-transparent border-none cursor-pointer text-muted-foreground hover:text-foreground"><X className="w-5 h-5" /></button>
+            </div>
+            <form onSubmit={handleSave} className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-foreground mb-1">Lab Name <span className="text-destructive">*</span></label>
+                  <input name="lab_name" value={form.lab_name} onChange={handleFormChange} className={inputCls} required />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-foreground mb-1">Lab Code <span className="text-destructive">*</span></label>
+                  <input name="lab_code" value={form.lab_code} onChange={handleFormChange} className={inputCls} required />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-foreground mb-1">Floor</label>
+                <input name="floor" value={form.floor} onChange={handleFormChange} placeholder="e.g. 2nd Floor" className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-foreground mb-1">Description</label>
+                <textarea name="description" value={form.description} onChange={handleFormChange} rows={3} className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-foreground mb-1">Max Capacity</label>
+                <input name="max_capacity" type="number" min="0" value={form.max_capacity} onChange={handleFormChange} className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-foreground mb-1">Equipment List</label>
+                <input name="equipment_list" value={form.equipment_list} onChange={handleFormChange} placeholder="e.g. Microscope, Centrifuge" className={inputCls} />
+              </div>
+              <div className="flex gap-3 justify-end pt-2">
+                <button type="button" onClick={closeEdit} className="px-4 py-2 rounded-lg border border-border hover:bg-muted text-sm font-semibold cursor-pointer bg-transparent text-foreground">Cancel</button>
+                <button type="submit" disabled={saving} className="gradient-primary text-primary-foreground px-5 py-2 rounded-lg text-sm font-semibold border-none cursor-pointer hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                  {saving ? 'Saving…' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>);
 
 };

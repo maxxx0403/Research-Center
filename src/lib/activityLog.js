@@ -29,22 +29,6 @@ const getActor = async (userId) => {
   return actor;
 };
 
-// Insert one activity log row. If the database does not have the newer columns yet
-// (actor_id, actor_role, laboratory_ids, target_user_id), retry with the basic columns
-// so the action is STILL recorded instead of silently lost.
-const insertLog = async (row) => {
-  let { error } = await supabase.from('activity_logs').insert(row);
-  if (error && /column|schema cache/i.test(error.message || '')) {
-    const { action, description, floor, actor } = row;
-    ({ error } = await supabase.from('activity_logs').insert({ action, description, floor, actor }));
-  }
-  if (error) {
-    console.error('Failed to write activity log:', error);
-    return false;
-  }
-  return true;
-};
-
 const pad = (n) => String(n).padStart(5, '0');
 
 const describe = (type, items) => {
@@ -83,15 +67,18 @@ export const logReservationAction = async ({ userId, type, verb, items, reason }
     const action = `${type === 'equipment' ? 'equipment_reservation' : 'reservation'}_${verb.toLowerCase().replace(/[^a-z]+/g, '_').replace(/^_|_$/g, '')}`;
     const actor = await getActor(userId);
     const laboratory_ids = [...new Set(labIds.filter((id) => id != null).map(Number))];
-    await insertLog({
-      action,
-      description,
-      floor,
-      actor: actor.name,
-      actor_id: userId,
-      actor_role: actor.role,
-      laboratory_ids,
-    });
+    const { error } = await supabase
+      .from('activity_logs')
+      .insert({
+        action,
+        description,
+        floor,
+        actor: actor.name,
+        actor_id: userId,
+        actor_role: actor.role,
+        laboratory_ids,
+      });
+    if (error) console.error('Failed to write activity log:', error);
   } catch (e) {
     console.error('Failed to write activity log:', e);
   }
@@ -112,7 +99,7 @@ export const logStaffAccountAction = async ({ userId, targetUserId, verb, target
     if (!userId || !targetUserId) return;
     const actor = await getActor(userId);
     const action = `staff_account_${verb.toLowerCase().replace(/[^a-z]+/g, '_').replace(/^_|_$/g, '')}`;
-    await insertLog({
+    const { error } = await supabase.from('activity_logs').insert({
       action,
       description: `${verb} staff account of ${targetLabel}`,
       floor: null,
@@ -122,6 +109,7 @@ export const logStaffAccountAction = async ({ userId, targetUserId, verb, target
       target_user_id: targetUserId,
       laboratory_ids: laboratoryIds.map(Number),
     });
+    if (error) console.error('Failed to write activity log:', error);
   } catch (e) {
     console.error('Failed to write activity log:', e);
   }
@@ -135,8 +123,9 @@ export const logStaffAccountAction = async ({ userId, targetUserId, verb, target
  * @param {'Added'|'Updated'|'Deleted'} p.verb
  * @param {object} p.item - the saved or deleted catalog row
  * @param {number[]} [p.laboratoryIds] - laboratories affected by the action
+ * @param {string} [p.detail] - what changed, e.g. "Status: available → maintenance"
  */
-export const logCatalogAction = async ({ userId, type, verb, item, laboratoryIds = [] }) => {
+export const logCatalogAction = async ({ userId, type, verb, item, laboratoryIds = [], detail = '' }) => {
   try {
     if (!userId || !item) return;
     const actor = await getActor(userId);
@@ -144,16 +133,29 @@ export const logCatalogAction = async ({ userId, type, verb, item, laboratoryIds
       ? `laboratory ${item.lab_name} (${item.lab_code})`
       : `equipment ${item.name}`;
     const action = `${type}_${verb.toLowerCase()}`;
-    await insertLog({
+    const { error } = await supabase.from('activity_logs').insert({
       action,
-      description: `${verb} ${label}`,
+      description: `${verb} ${label}${detail ? ` (${detail})` : ''}`,
       floor: item.floor || item.laboratories?.floor || null,
       actor: actor.name,
       actor_id: userId,
       actor_role: actor.role,
       laboratory_ids: [...new Set(laboratoryIds.filter((id) => id != null).map(Number))],
     });
+    if (error) console.error('Failed to write activity log:', error);
   } catch (e) {
     console.error('Failed to write activity log:', e);
   }
+};
+
+/**
+ * Builds a short "Field: old → new" text of what changed between two rows,
+ * for the activity log. fields: [{ key, label }]. Returns '' if nothing changed.
+ */
+export const summarizeChanges = (before, after, fields) => {
+  const show = (v) => (v === null || v === undefined || v === '' ? '—' : String(v));
+  return fields
+    .filter(({ key }) => show(before?.[key]) !== show(after?.[key]))
+    .map(({ key, label }) => `${label}: ${show(before?.[key])} → ${show(after?.[key])}`)
+    .join('; ');
 };

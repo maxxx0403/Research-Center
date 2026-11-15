@@ -5,10 +5,17 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { NonOfficialBulk, saveNonOfficialHours } from '@/components/NonOfficialToggle';
-import { logCatalogAction } from '@/lib/activityLog';
+import { logCatalogAction, summarizeChanges } from '@/lib/activityLog';
 import CatalogPagination from '@/components/CatalogPagination';
 import { catalogDuplicateErrorMessage, isDuplicateEquipment } from '@/lib/catalogValidation';
 
+const EQ_FIELDS = [
+  { key: 'name', label: 'Name' },
+  { key: 'brand', label: 'Brand' },
+  { key: 'model', label: 'Model' },
+  { key: 'laboratory_id', label: 'Laboratory ID' },
+  { key: 'quantity', label: 'Quantity' },
+];
 const EMPTY_EQ = { name: '', brand: '', model: '', laboratory_id: '', quantity: '1' };
 const EQUIPMENT_PER_PAGE = 20;
 const inputCls = "w-full px-3 py-2.5 border border-border rounded-lg text-sm bg-card text-foreground focus:outline-none focus:border-primary";
@@ -104,8 +111,9 @@ const StaffEquipment = () => {
         userId: user?.id,
         type: 'equipment',
         verb: 'Updated',
-        item: payload,
+        item: { ...payload, floor: floorLabs.find((l) => l.id === payload.laboratory_id)?.floor || null },
         laboratoryIds: [editTarget.laboratory_id, payload.laboratory_id],
+        detail: summarizeChanges(editTarget, payload, EQ_FIELDS),
       });
       toast.success(`${payload.name} updated.`);
     } else {
@@ -127,6 +135,7 @@ const StaffEquipment = () => {
     const error = await saveNonOfficialHours('equipment', [item.id], value);
     if (error) { toast.error('Failed to update: ' + error.message); return; }
     setEquipment((prev) => prev.map((e) => (e.id === item.id ? { ...e, allow_non_official_hours: value } : e)));
+    logCatalogAction({ userId: user?.id, type: 'equipment', verb: 'Updated', item, laboratoryIds: [item.laboratory_id], detail: `Friday–Sunday bookings: ${value ? 'ON' : 'OFF'}` });
     toast.success(`${item.name}: Friday–Sunday bookings ${value ? 'ON' : 'OFF'}.`);
   };
 
@@ -135,7 +144,9 @@ const StaffEquipment = () => {
     if (!ids.length) return;
     const error = await saveNonOfficialHours('equipment', ids, value);
     if (error) { toast.error('Failed to update: ' + error.message); return; }
+    const changed = equipment.filter((e) => ids.includes(e.id) && !!e.allow_non_official_hours !== value);
     setEquipment((prev) => prev.map((e) => (ids.includes(e.id) ? { ...e, allow_non_official_hours: value } : e)));
+    changed.forEach((e) => logCatalogAction({ userId: user?.id, type: 'equipment', verb: 'Updated', item: e, laboratoryIds: [e.laboratory_id], detail: `Friday–Sunday bookings: ${value ? 'ON' : 'OFF'}` }));
     toast.success(`Friday–Sunday bookings turned ${value ? 'ON' : 'OFF'} for ${ids.length} equipment item${ids.length === 1 ? '' : 's'}.`);
   };
 
@@ -208,6 +219,7 @@ const StaffEquipment = () => {
                           const { error } = await supabase.from('equipment').update({ status: newStatus }).eq('id', e.id);
                           if (error) { toast.error('Failed to update status'); return; }
                           setEquipment((prev) => prev.map((eq) => eq.id === e.id ? { ...eq, status: newStatus } : eq));
+                          logCatalogAction({ userId: user?.id, type: 'equipment', verb: 'Updated', item: e, laboratoryIds: [e.laboratory_id], detail: `Status: ${e.status} → ${newStatus}` });
                           toast.success(`Status updated to ${newStatus}`);
                         },
                       },

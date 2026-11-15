@@ -31,15 +31,14 @@ const toDateKey = (year, month, day) => {
 
 // hideNames: when true (student/faculty views) booker names and study titles are
 // never shown or even fetched; bookings just appear as "Booked".
-// showNonOfficialAsOpen: when true (staff dashboard) Fri-Sun are never shown as
-// "Closed", even when the laboratory's non-official hours switch is OFF.
-export const ReservationCalendarView = ({ labId = null, hideNames = false, showNonOfficialAsOpen = false }) => {
+export const ReservationCalendarView = ({ labId = null, hideNames = false }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [reservations, setReservations] = useState([]);
   const [staffUnavailability, setStaffUnavailability] = useState({});
   const [loading, setLoading] = useState(false);
   const [selectedDate, setSelectedDate] = useState(null);
   const [closedDays, setClosedDays] = useState(DEFAULT_CLOSED_DAYS);
+  const [offLabs, setOffLabs] = useState([]); // labs that do NOT accept Fri-Sun bookings
   const [pendingCounts, setPendingCounts] = useState({});
   const [pendingCountError, setPendingCountError] = useState(false);
 
@@ -47,7 +46,7 @@ export const ReservationCalendarView = ({ labId = null, hideNames = false, showN
     fetchReservations();
     fetchStaffUnavailability();
     fetchOpenDays();
-  }, [currentDate, labId, showNonOfficialAsOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currentDate, labId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     fetchPendingCounts();
@@ -104,19 +103,18 @@ export const ReservationCalendarView = ({ labId = null, hideNames = false, showN
 
   // Fri-Sun are open only if at least one (shown) laboratory allows non-official hours.
   const fetchOpenDays = async () => {
-    if (showNonOfficialAsOpen) {
-      setClosedDays([]);
-      return;
-    }
     try {
-      let q = supabase.from('laboratories').select('id, allow_non_official_hours');
+      let q = supabase.from('laboratories').select('id, lab_name, lab_code, status, allow_non_official_hours');
       if (labId) q = q.eq('id', labId);
       const { data, error } = await q;
       if (error) throw error;
-      setClosedDays((data || []).some((l) => l.allow_non_official_hours) ? [] : DEFAULT_CLOSED_DAYS);
+      const rows = data || [];
+      setClosedDays(rows.some((l) => l.allow_non_official_hours) ? [] : DEFAULT_CLOSED_DAYS);
+      setOffLabs(rows.filter((l) => !l.allow_non_official_hours && l.status !== 'maintenance'));
     } catch (error) {
       console.error('Error fetching non-official hours setting:', error);
       setClosedDays(LEGACY_CLOSED_DAYS);
+      setOffLabs([]);
     }
   };
 
@@ -216,6 +214,11 @@ export const ReservationCalendarView = ({ labId = null, hideNames = false, showN
           <p className="text-xs text-muted-foreground mt-0.5">
             Bookings available <span className="font-semibold text-foreground">{openDaysLabel(closedDays)}</span> only · 7:00 AM – 6:00 PM
           </p>
+          {closedDays.length === 0 && offLabs.length > 0 && (
+            <p role="note" className="text-xs text-destructive mt-1 font-semibold">
+              Not accepting Friday–Sunday (non-official hours) bookings: {offLabs.map((l) => l.lab_name).join(', ')}. Book these Monday–Thursday only.
+            </p>
+          )}
         </div>
         <div className="flex gap-2">
           <button onClick={previousMonth} className="p-2 rounded-lg bg-white/40 backdrop-blur-xl border border-white/70 text-primary hover:bg-white/60 transition-colors">
