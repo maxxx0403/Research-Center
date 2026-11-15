@@ -3,6 +3,10 @@ import { FileText, Trash2, Search, Calendar, Clock, Plus, ChevronLeft, ChevronRi
 import RowActions from '@/components/RowActions';
 import { supabase } from '@/integrations/supabase/client';
 
+// Who submitted this? Falls back to a short id if the account has no name/email yet.
+const submitterName = (s) => s.submitter_name || (s.submitter_email ? s.submitter_email.split('@')[0] : `${s.user_id.slice(0, 8)}…`);
+
+
 const SubmissionRow = ({ s, onStatusChange, onDelete }) => {
   const [url, setUrl] = useState('');
   
@@ -21,7 +25,10 @@ const SubmissionRow = ({ s, onStatusChange, onDelete }) => {
 
   return (
     <tr className="border-b border-muted hover:bg-muted/30">
-      <td className="px-4 py-3 font-semibold text-xs">{s.user_id.slice(0, 8)}…</td>
+      <td className="px-4 py-3 text-xs">
+        <div className="font-semibold">{submitterName(s)}</div>
+        {s.submitter_email && <div className="text-muted-foreground">{s.submitter_email}</div>}
+      </td>
       <td className="px-4 py-3">
         {url ? (
           <a 
@@ -101,7 +108,7 @@ const SubmissionCard = ({ s, onStatusChange, onDelete }) => {
       <p className="text-xs text-muted-foreground">{s.description || '—'}</p>
       <div className="flex items-center justify-between gap-2 pt-1">
         <span className="text-xs text-muted-foreground">
-          {s.user_id.slice(0, 8)}… · {new Date(s.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+          {submitterName(s)}{s.submitter_email ? ` (${s.submitter_email})` : ''} · {new Date(s.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
         </span>
         <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold capitalize ${statusColors[s.status] || 'bg-muted text-muted-foreground'}`}>{s.status}</span>
       </div>
@@ -225,7 +232,9 @@ const AdminSubmissions = () => {
     const matchesSearch = !search || 
       s.file_name.toLowerCase().includes(search.toLowerCase()) || 
       (s.destination || '').toLowerCase().includes(search.toLowerCase()) ||
-      (s.description || '').toLowerCase().includes(search.toLowerCase());
+      (s.description || '').toLowerCase().includes(search.toLowerCase()) ||
+      (s.submitter_name || '').toLowerCase().includes(search.toLowerCase()) ||
+      (s.submitter_email || '').toLowerCase().includes(search.toLowerCase());
     const matchesStatus = !statusFilter || s.status === statusFilter;
     return matchesSearch && matchesStatus;
   });

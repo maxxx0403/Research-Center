@@ -3,17 +3,23 @@ import { LayoutDashboard, CalendarCheck, FlaskConical, MessageSquare, LogOut, Ch
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import NotificationBell from '@/components/NotificationBell';
+import SidebarNav from '@/components/SidebarNav';
 import cvsuLogo from '@/assets/cvsu-logo.png';
 import '@/glass.css';
 
-const menuItems = [
-{ to: '/user/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-{ to: '/user/reservations', icon: CalendarCheck, label: 'My Reservations' },
-{ to: '/user/reserve', icon: FlaskConical, label: 'Reserve Lab' },
-{ to: '/user/reserve-equipment', icon: Package, label: 'Reserve Equipment' },
-{ to: '/user/forms', icon: FileText, label: 'Forms and Papers' },
-{ to: '/user/feedback', icon: MessageSquare, label: 'Feedback' },
-{ to: '/user/help', icon: LifeBuoy, label: 'Help & Support' }];
+const menuGroups = [
+  { title: 'Main', items: [
+    { to: '/user/dashboard', icon: LayoutDashboard, label: 'Dashboard' }] },
+  { title: 'Reservations', items: [
+    { to: '/user/reservations', icon: CalendarCheck, label: 'My Reservations' },
+    { to: '/user/reserve', icon: FlaskConical, label: 'Reserve Lab' },
+    { to: '/user/reserve-equipment', icon: Package, label: 'Reserve Equipment' }] },
+  { title: 'Documents', items: [
+    { to: '/user/forms', icon: FileText, label: 'Forms and Papers' }] },
+  { title: 'Support', items: [
+    { to: '/user/feedback', icon: MessageSquare, label: 'Feedback' },
+    { to: '/user/help', icon: LifeBuoy, label: 'Help & Support' }] }];
+const menuItems = menuGroups.flatMap((g) => g.items);
 
 
 const UserLayout = () => {
@@ -85,19 +91,7 @@ const UserLayout = () => {
             <div className={`overflow-hidden whitespace-nowrap transition-all duration-[350ms] ease-[cubic-bezier(0.22,1,0.36,1)] ${sidebarOpen ? 'max-w-[200px] opacity-100' : 'lg:max-w-0 lg:opacity-0'}`}><div className="font-heading font-bold text-sm leading-tight">CvSU Research Center</div><div className="text-[0.7rem] text-primary-foreground/50">Researcher Portal</div></div>
           </div>
         </div>
-        <nav className="flex-1 py-3">
-          {menuItems.map((item) =>
-          <Link key={item.to} to={item.to} onClick={() => { if (window.innerWidth < 1024) setSidebarOpen(false); }}
-          aria-label={item.label}
-          className={`relative group flex items-center gap-3 px-5 py-3 text-sm font-medium no-underline transition-colors border-l-[3px] ${location.pathname === item.to ? 'text-primary-foreground bg-secondary/20 border-l-secondary' : 'text-primary-foreground/60 border-l-transparent hover:text-primary-foreground hover:bg-primary-foreground/5'}`}>
-              <item.icon className="w-[18px] h-[18px] flex-shrink-0" />
-              <span className={`overflow-hidden whitespace-nowrap transition-all duration-[350ms] ease-[cubic-bezier(0.22,1,0.36,1)] ${sidebarOpen ? 'max-w-[200px] opacity-100' : 'lg:max-w-0 lg:opacity-0'}`}>{item.label}</span>
-              {!sidebarOpen && (
-                <span className="hidden lg:block absolute left-full top-1/2 -translate-y-1/2 ml-3 px-2.5 py-1.5 rounded-md bg-foreground text-background text-xs font-semibold whitespace-nowrap shadow-lg opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity duration-150 z-50">{item.label}</span>
-              )}
-            </Link>
-          )}
-        </nav>
+        <SidebarNav groups={menuGroups} sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />
       </aside>
 
       <div className={`flex-1 min-w-0 flex flex-col min-h-screen transition-[margin] duration-[350ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${sidebarOpen ? 'lg:ml-[260px]' : 'lg:ml-16'}`}>

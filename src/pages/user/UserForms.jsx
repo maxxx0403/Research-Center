@@ -147,13 +147,27 @@ const UserForms = () => {
 
   const handleDelete = async (sub) => {
     if (!confirm('Delete this submission?')) return;
-    
+
     try {
-      await supabase.storage.from('submissions').remove([sub.file_path]);
-      await supabase.from('paper_submissions').delete().eq('id', sub.id);
+      // Delete the row first; .select() returns what was actually deleted.
+      const { data: deleted, error } = await supabase
+        .from('paper_submissions')
+        .delete()
+        .eq('id', sub.id)
+        .select('id');
+      if (error) throw error;
+      if (!deleted || deleted.length === 0) {
+        alert('This submission can no longer be deleted (it may already be under review).');
+        return;
+      }
+
+      const { error: storageError } = await supabase.storage.from('submissions').remove([sub.file_path]);
+      if (storageError) console.error('Could not remove file from storage:', storageError);
+
       await fetchSubmissions();
     } catch (error) {
-      alert('Error deleting: ' + error.message);
+      console.error('Error deleting submission:', error);
+      alert('Error deleting: ' + (error.message || 'unknown error'));
     }
   };
 

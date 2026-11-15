@@ -3,18 +3,25 @@ import { LayoutDashboard, CalendarCheck, FlaskConical, Package, BarChart3, Setti
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import NotificationBell from '@/components/NotificationBell';
+import SidebarNav from '@/components/SidebarNav';
 import cvsuLogo from '@/assets/cvsu-logo.png';
 import '@/glass.css';
 
-const menuItems = [
-{ to: '/staff/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-{ to: '/staff/laboratories', icon: FlaskConical, label: 'Laboratories' },
-{ to: '/staff/equipment', icon: Package, label: 'Equipment' },
-{ to: '/staff/reservations', icon: CalendarCheck, label: 'Reservations' },
-{ to: '/staff/reports', icon: BarChart3, label: 'Reports' },
-{ to: '/staff/feedbacks', icon: MessageSquare, label: 'Feedback' },
-{ to: '/staff/activity-logs', icon: History, label: 'Activity Log' },
-{ to: '/staff/unavailability', icon: CalendarOff, label: 'My Unavailable Dates' }];
+const menuGroups = [
+  { title: 'Main', items: [
+    { to: '/staff/dashboard', icon: LayoutDashboard, label: 'Dashboard' }] },
+  { title: 'Bookings', items: [
+    { to: '/staff/reservations', icon: CalendarCheck, label: 'Reservations' }] },
+  { title: 'Facilities', items: [
+    { to: '/staff/laboratories', icon: FlaskConical, label: 'Laboratories' },
+    { to: '/staff/equipment', icon: Package, label: 'Equipment' }] },
+  { title: 'Insights', items: [
+    { to: '/staff/reports', icon: BarChart3, label: 'Reports' },
+    { to: '/staff/feedbacks', icon: MessageSquare, label: 'Feedback' }] },
+  { title: 'My Account', items: [
+    { to: '/staff/unavailability', icon: CalendarOff, label: 'My Unavailable Dates' },
+    { to: '/staff/activity-logs', icon: History, label: 'Activity Log' }] }];
+const menuItems = menuGroups.flatMap((g) => g.items);
 
 const StaffLayout = () => {
   const location = useLocation();
@@ -59,19 +66,7 @@ const StaffLayout = () => {
           </div>
         </div>
 
-        <nav className="flex-1 py-3 mt-2">
-          {menuItems.map((item) =>
-          <Link key={item.to} to={item.to} onClick={() => { if (window.innerWidth < 1024) setSidebarOpen(false); }}
-          aria-label={item.label}
-          className={`relative group flex items-center gap-3 px-5 py-3 text-sm font-medium no-underline transition-colors border-l-[3px] ${location.pathname === item.to ? 'text-primary-foreground bg-secondary/20 border-l-secondary' : 'text-primary-foreground/60 border-l-transparent hover:text-primary-foreground hover:bg-primary-foreground/5'}`}>
-              <item.icon className="w-[18px] h-[18px] flex-shrink-0" />
-              <span className={`overflow-hidden whitespace-nowrap transition-all duration-[350ms] ease-[cubic-bezier(0.22,1,0.36,1)] ${sidebarOpen ? 'max-w-[200px] opacity-100' : 'lg:max-w-0 lg:opacity-0'}`}>{item.label}</span>
-              {!sidebarOpen && (
-                <span className="hidden lg:block absolute left-full top-1/2 -translate-y-1/2 ml-3 px-2.5 py-1.5 rounded-md bg-foreground text-background text-xs font-semibold whitespace-nowrap shadow-lg opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity duration-150 z-50">{item.label}</span>
-              )}
-            </Link>
-          )}
-        </nav>
+        <SidebarNav groups={menuGroups} sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />
       </aside>
 
       <div className={`flex-1 min-w-0 flex flex-col min-h-screen transition-[margin] duration-[350ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${sidebarOpen ? 'lg:ml-[260px]' : 'lg:ml-16'}`}>
