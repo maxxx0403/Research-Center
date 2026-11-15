@@ -71,7 +71,7 @@ const StaffDashboard = () => {
           </select>
         </div>
         <div className="p-6">
-          <ReservationCalendarView labId={selectedLabId} />
+          <ReservationCalendarView labId={selectedLabId} showNonOfficialAsOpen />
         </div>
       </div>
 

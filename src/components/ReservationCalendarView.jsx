@@ -31,7 +31,9 @@ const toDateKey = (year, month, day) => {
 
 // hideNames: when true (student/faculty views) booker names and study titles are
 // never shown or even fetched; bookings just appear as "Booked".
-export const ReservationCalendarView = ({ labId = null, hideNames = false }) => {
+// showNonOfficialAsOpen: when true (staff dashboard) Fri-Sun are never shown as
+// "Closed", even when the laboratory's non-official hours switch is OFF.
+export const ReservationCalendarView = ({ labId = null, hideNames = false, showNonOfficialAsOpen = false }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [reservations, setReservations] = useState([]);
   const [staffUnavailability, setStaffUnavailability] = useState({});
@@ -45,7 +47,7 @@ export const ReservationCalendarView = ({ labId = null, hideNames = false }) => 
     fetchReservations();
     fetchStaffUnavailability();
     fetchOpenDays();
-  }, [currentDate, labId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currentDate, labId, showNonOfficialAsOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     fetchPendingCounts();
@@ -102,6 +104,10 @@ export const ReservationCalendarView = ({ labId = null, hideNames = false }) => 
 
   // Fri-Sun are open only if at least one (shown) laboratory allows non-official hours.
   const fetchOpenDays = async () => {
+    if (showNonOfficialAsOpen) {
+      setClosedDays([]);
+      return;
+    }
     try {
       let q = supabase.from('laboratories').select('id, allow_non_official_hours');
       if (labId) q = q.eq('id', labId);

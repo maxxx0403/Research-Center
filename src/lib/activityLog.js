@@ -29,6 +29,22 @@ const getActor = async (userId) => {
   return actor;
 };
 
+// Insert one activity log row. If the database does not have the newer columns yet
+// (actor_id, actor_role, laboratory_ids, target_user_id), retry with the basic columns
+// so the action is STILL recorded instead of silently lost.
+const insertLog = async (row) => {
+  let { error } = await supabase.from('activity_logs').insert(row);
+  if (error && /column|schema cache/i.test(error.message || '')) {
+    const { action, description, floor, actor } = row;
+    ({ error } = await supabase.from('activity_logs').insert({ action, description, floor, actor }));
+  }
+  if (error) {
+    console.error('Failed to write activity log:', error);
+    return false;
+  }
+  return true;
+};
+
 const pad = (n) => String(n).padStart(5, '0');
 
 const describe = (type, items) => {
@@ -67,18 +83,15 @@ export const logReservationAction = async ({ userId, type, verb, items, reason }
     const action = `${type === 'equipment' ? 'equipment_reservation' : 'reservation'}_${verb.toLowerCase().replace(/[^a-z]+/g, '_').replace(/^_|_$/g, '')}`;
     const actor = await getActor(userId);
     const laboratory_ids = [...new Set(labIds.filter((id) => id != null).map(Number))];
-    const { error } = await supabase
-      .from('activity_logs')
-      .insert({
-        action,
-        description,
-        floor,
-        actor: actor.name,
-        actor_id: userId,
-        actor_role: actor.role,
-        laboratory_ids,
-      });
-    if (error) console.error('Failed to write activity log:', error);
+    await insertLog({
+      action,
+      description,
+      floor,
+      actor: actor.name,
+      actor_id: userId,
+      actor_role: actor.role,
+      laboratory_ids,
+    });
   } catch (e) {
     console.error('Failed to write activity log:', e);
   }
@@ -99,7 +112,7 @@ export const logStaffAccountAction = async ({ userId, targetUserId, verb, target
     if (!userId || !targetUserId) return;
     const actor = await getActor(userId);
     const action = `staff_account_${verb.toLowerCase().replace(/[^a-z]+/g, '_').replace(/^_|_$/g, '')}`;
-    const { error } = await supabase.from('activity_logs').insert({
+    await insertLog({
       action,
       description: `${verb} staff account of ${targetLabel}`,
       floor: null,
@@ -109,7 +122,6 @@ export const logStaffAccountAction = async ({ userId, targetUserId, verb, target
       target_user_id: targetUserId,
       laboratory_ids: laboratoryIds.map(Number),
     });
-    if (error) console.error('Failed to write activity log:', error);
   } catch (e) {
     console.error('Failed to write activity log:', e);
   }
@@ -132,7 +144,7 @@ export const logCatalogAction = async ({ userId, type, verb, item, laboratoryIds
       ? `laboratory ${item.lab_name} (${item.lab_code})`
       : `equipment ${item.name}`;
     const action = `${type}_${verb.toLowerCase()}`;
-    const { error } = await supabase.from('activity_logs').insert({
+    await insertLog({
       action,
       description: `${verb} ${label}`,
       floor: item.floor || item.laboratories?.floor || null,
@@ -141,7 +153,6 @@ export const logCatalogAction = async ({ userId, type, verb, item, laboratoryIds
       actor_role: actor.role,
       laboratory_ids: [...new Set(laboratoryIds.filter((id) => id != null).map(Number))],
     });
-    if (error) console.error('Failed to write activity log:', error);
   } catch (e) {
     console.error('Failed to write activity log:', e);
   }
