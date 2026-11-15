@@ -440,3 +440,25 @@ export const removeEquipmentFromReservation = async (reservationEquipmentId) => 
     throw error;
   }
 };
+
+/**
+ * Cancel only the chosen rows of a multi-reservation (one or more labs/days or
+ * equipment items that share a batch_id). Rows that are no longer in one of the
+ * allowed statuses (e.g. already completed) are left untouched.
+ * @param {'reservations'|'equipment_reservations'} table
+ * @param {Array<number>} ids - Row IDs to cancel
+ * @param {Array<string>} [allowedStatuses] - Statuses a row may be cancelled from
+ * @returns {Promise<Array>} the rows that were actually cancelled
+ */
+export const cancelReservationItems = async (table, ids, allowedStatuses = ['pending', 'reserved']) => {
+  if (!ids?.length) return [];
+  const { data, error } = await supabase
+    .from(table)
+    .update({ status: 'cancelled' })
+    .in('id', ids)
+    .in('status', allowedStatuses)
+    .select();
+
+  if (error) throw error;
+  return data || [];
+};

@@ -52,6 +52,21 @@ export const notifyReservationRejected = async ({ userId, label, reason, reserva
   });
 };
 
+/**
+ * Tells a researcher that admin/staff cancelled one (or some) of the labs/days or
+ * equipment in their reservation. `detail` says which ones.
+ */
+export const notifyReservationCancelled = async ({ userId, label, detail, reservationType, reservationId }) => {
+  return createNotification({
+    userId,
+    type: 'reservation_cancelled',
+    title: `${label} cancelled`,
+    message: detail ? `Cancelled: ${detail}` : 'Part of your reservation was cancelled by the laboratory staff.',
+    reservationType,
+    reservationId
+  });
+};
+
 export const notifyReservationApproved = async ({ userId, label, reservationType, reservationId }) => {
   return createNotification({
     userId,

@@ -57,12 +57,14 @@ const describe = (type, items) => {
  * @param {string} p.verb    - 'Accepted' | 'Rejected' | 'Deleted' | ...
  * @param {Array}  p.items   - the reservation row(s) acted on
  * @param {string} [p.reason]
+ * @param {string} [p.note]  - extra detail, e.g. which days were cancelled
  */
-export const logReservationAction = async ({ userId, type, verb, items, reason }) => {
+export const logReservationAction = async ({ userId, type, verb, items, reason, note }) => {
   try {
     if (!userId || !items?.length) return;
     const { ref, who, detail, floor, labIds } = describe(type, items);
     let description = `${verb} ${ref} of ${who}${detail ? ` — ${detail}` : ''}`;
+    if (note) description += ` [${note}]`;
     if (reason) description += ` (Reason: ${reason})`;
     const action = `${type === 'equipment' ? 'equipment_reservation' : 'reservation'}_${verb.toLowerCase().replace(/[^a-z]+/g, '_').replace(/^_|_$/g, '')}`;
     const actor = await getActor(userId);
