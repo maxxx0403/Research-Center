@@ -155,3 +155,85 @@ export const recordLoginAttempt = (success) => {
     // sessionStorage unavailable — fail open, server-side limits still apply
   }
 };
+
+// ---------------------------------------------------------------------------
+// Members list: individual members + whole sections (class lists)
+// ---------------------------------------------------------------------------
+// members_list is stored as text entries:
+//   individual member:  "Full Name — Student No. 2023xxxx"
+//   section member:     "Full Name — Student No. 2023xxxx — Section BSIT 3-1"
+//                       (or "Full Name — Section BSIT 3-1" if the list had no number)
+// The Section tag lets the request form show just the section instead of every name.
+const SECTION_TAG_RE = /\s+—\s+Section\s+(.+)$/;
+const HEADER_LINE_RE = /^\s*(no\.?|#)?\s*(full\s*)?(name|student|last\s*name|surname)\b/i;
+
+/**
+ * Reads a pasted/uploaded class list. One student per line; the student number is
+ * any run of 6+ digits on the line, everything else is the name.
+ * e.g. "Santos, Maria A.\t202302604" or "1. Juan Dela Cruz - 202301234"
+ * @returns [{ name, studentNumber }]
+ */
+export const parseClassList = (text) =>
+  String(text || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    // skip empty lines and a header row like "No. | Name | Student Number" (headers have no student number)
+    .filter((line) => line && !(HEADER_LINE_RE.test(line) && !/\d{6,}/.test(line)))
+    .map((line) => {
+      const numberMatch = line.match(/\d{6,}/);
+      const studentNumber = numberMatch ? numberMatch[0] : '';
+      const name = (numberMatch ? line.replace(numberMatch[0], ' ') : line)
+        .replace(/^\s*\d{1,3}(?:[.)]|\t|\s+(?=[a-z]))\s*/i, '') // leading row number "1." / "1)" / "1<tab>"
+        .replace(/[\t|;]+/g, ' ')
+        .replace(/\s+[-–—]\s*$|^\s*[-–—]\s+/g, '')
+        .replace(/\s{2,}/g, ' ')
+        .replace(/^[\s,]+|[\s,]+$/g, '')
+        .trim();
+      return { name, studentNumber };
+    })
+    .filter((s) => /[a-z]/i.test(s.name));
+
+/** members_list entries for the students of each section: [{ name, text }] */
+export const sectionMemberEntries = (sections) =>
+  (sections || []).flatMap((section) => {
+    const sectionName = sanitizeText(section.name, { maxLength: 60 });
+    if (!sectionName) return [];
+    return parseClassList(section.text).map((s) => {
+      const name = sanitizeText(s.name, { maxLength: 150 });
+      const number = sanitizeText(s.studentNumber, { maxLength: 50 });
+      return `${name}${number ? ` — Student No. ${number}` : ''} — Section ${sectionName}`;
+    });
+  });
+
+/**
+ * Splits members_list into individual members and sections.
+ * @returns { individuals: [entry], sections: [{ name, count }] }
+ */
+export const splitMembersBySection = (list) => {
+  const individuals = [];
+  const sections = new Map();
+  (Array.isArray(list) ? list : []).forEach((entry) => {
+    if (typeof entry !== 'string' || !entry.trim()) return;
+    const match = entry.match(SECTION_TAG_RE);
+    if (match) {
+      const name = match[1].trim();
+      sections.set(name, (sections.get(name) || 0) + 1);
+    } else {
+      individuals.push(entry);
+    }
+  });
+  return { individuals, sections: [...sections.entries()].map(([name, count]) => ({ name, count })) };
+};
+
+/**
+ * "Name(s)" text for the request form: the requester, members added one by one,
+ * and each section as one entry, e.g. "Section BSIT 3-1 (40 students)".
+ */
+export const formNamesText = (researcherName, membersList) => {
+  const { individuals, sections } = splitMembersBySection(membersList);
+  return [
+    researcherName,
+    ...individuals,
+    ...sections.map((s) => `Section ${s.name} (${s.count} student${s.count === 1 ? '' : 's'})`),
+  ].filter(Boolean).join(', ');
+};

@@ -5,12 +5,16 @@ import { supabase } from '@/integrations/supabase/client';
 import { sendReservationEmail } from '@/lib/reservationEmail';
 import { useAuth } from '@/contexts/AuthContext';
 import BookingDateTimeInput from '@/components/BookingDateTimeInput';
-import FormSelect from '@/components/FormSelect';
-import { getStakeholderConfig, isCvsuEmail } from '@/lib/stakeholder';
+import FormSelect, { SectionListInput } from '@/components/FormSelect';
+import { getStakeholderConfig, isCvsuEmail, accountUnitCollege } from '@/lib/stakeholder';
+import { fetchEquipmentAvailability, isOutOfService, equipmentStatusLabel } from '@/lib/equipmentAvailability';
 import { CVSU_COLLEGES } from '@/lib/cvsuColleges';
-import { validateReservationFields, sanitizeText } from '@/lib/validation';
-import { earliestBookableInput, earliestBookableLabel, manilaInputToISO, validateBookingDateTime, spansNonOfficialDay, MIN_ADVANCE_DAYS } from '@/lib/timezone';
+import { validateReservationFields, sanitizeText, parseClassList, sectionMemberEntries } from '@/lib/validation';
+import { toManilaInputValue, earliestBookableInput, earliestBookableLabel, manilaInputToISO, validateBookingDateTime, spansNonOfficialDay, MIN_ADVANCE_DAYS } from '@/lib/timezone';
 import PendingReservationDateNotice from '@/components/PendingReservationDateNotice';
+import DailySchedule from '@/components/DailySchedule';
+import { categoryOf, summarizeCategories } from '@/lib/equipmentCategories';
+import { emptySchedule, buildSlots, validateSlots, isRangeTooLong, labelDate, MAX_BOOKING_DAYS } from '@/lib/dailySchedule';
 import {
   fetchPendingReservationCounts,
   getFullPendingReservationDate,
@@ -26,7 +30,21 @@ const validateDateTime = (start, end, allowNonOfficial = false) => validateBooki
 const inputClass =
   'w-full px-4 py-3 border-2 border-border rounded-xl text-base bg-card text-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10';
 
-const emptyItem = (equipmentId = 0) => ({ equipmentId, quantity: 1 });
+// laboratory = the laboratory filter chosen for this row ('' = all laboratories). It is only a filter for the picker.
+const ALL_LABS = '__all';
+const NO_LAB = '__none';
+const emptyItem = (equipmentId = 0) => ({ equipmentId, quantity: 1, laboratory: '' });
+
+// "LAB 302 - Biological Laboratory": lab code first, then the full name.
+const labDisplay = (lab) => {
+  if (!lab?.lab_name && !lab?.lab_code) return '';
+  return [lab.lab_code, lab.lab_name].filter(Boolean).join(' - ');
+};
+
+// Which laboratory an equipment belongs to (value used by the dropdown).
+const ALL_CATEGORIES = '__all_categories';
+const labValueOf = (eq) => (eq?.laboratory_id ? String(eq.laboratory_id) : NO_LAB);
+const labLabelOf = (eq) => labDisplay(eq?.laboratories) || 'No laboratory assigned';
 
 const UserReserveEquipment = () => {
   const { user } = useAuth();
@@ -35,17 +53,26 @@ const UserReserveEquipment = () => {
 
   const [equipment, setEquipment] = useState([]);
   const [items, setItems] = useState([emptyItem(preId)]);
-  const [startDatetime, setStartDatetime] = useState('');
-  const [endDatetime, setEndDatetime] = useState('');
+  // Dates are chosen once; every date gets its own start and end time.
+  const [schedule, setSchedule] = useState(emptySchedule());
   const [stakeholderChoice, setStakeholderChoice] = useState('');
-  const { options: stakeholderOptions, autoValue: autoStakeholder } = getStakeholderConfig(user?.email);
+  const { options: stakeholderOptions, autoValue: autoStakeholder } = getStakeholderConfig(user?.email, user?.user_metadata?.stakeholder_type);
   // Non-CvSU emails (e.g. gmail.com) are auto-set; CvSU emails choose Student / Faculty.
   const stakeholderType = autoStakeholder || stakeholderChoice;
+  // Instructors list the sections that come with them instead of an adviser.
+  const isInstructor = stakeholderType === 'faculty_staff';
   // CvSU stakeholders (Student / Faculty-Staff) pick their college from a list;
   // outsiders type their own agency.
   const isCvsuStakeholder = stakeholderType ? stakeholderType !== 'non_cvsu' : isCvsuEmail(user?.email);
   const [unitCollege, setUnitCollege] = useState('');
+  // College / school saved on the account at registration: filled in and locked.
+  const lockedUnitCollege = accountUnitCollege(user, isCvsuStakeholder, CVSU_COLLEGES);
+  useEffect(() => {
+    if (lockedUnitCollege) setUnitCollege(lockedUnitCollege);
+  }, [lockedUnitCollege]);
   const [members, setMembers] = useState([{ name: '', studentNumber: '' }]);
+  // Whole sections submitted as a class list instead of one member at a time: [{ name, text }]
+  const [sections, setSections] = useState([]);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -57,7 +84,7 @@ const UserReserveEquipment = () => {
     supabase
       .from('equipment')
       .select('*, laboratories(lab_name, lab_code)')
-      .in('status', ['available', 'maintenance'])
+      .in('status', ['available', 'under_repair', 'maintenance'])
       .order('name')
       .then(({ data }) => setEquipment(data || []));
   }, []);
@@ -87,15 +114,150 @@ const UserReserveEquipment = () => {
     updated[idx] = { ...updated[idx], equipmentId };
     setItems(updated);
   };
+  const updateItemLaboratory = (idx, value) => {
+    const laboratory = value === ALL_LABS ? '' : value;
+    const updated = [...items];
+    const picked = equipment.find((e) => e.id === updated[idx].equipmentId);
+    // Changing the laboratory clears an equipment that does not belong to the new one.
+    const keep = !laboratory || !picked || labValueOf(picked) === laboratory;
+    updated[idx] = { ...updated[idx], laboratory, equipmentId: keep ? updated[idx].equipmentId : 0 };
+    setItems(updated);
+  };
   const updateItemQuantity = (idx, quantity) => {
     const updated = [...items];
-    updated[idx] = { ...updated[idx], quantity: Math.max(1, Number(quantity) || 1) };
+    const max = updated[idx].equipmentId ? maxQuantityOf(updated[idx].equipmentId) : 0;
+    let qty = Math.max(1, Number(quantity) || 1);
+    if (max >= 1) qty = Math.min(qty, max);
+    updated[idx] = { ...updated[idx], quantity: qty };
     setItems(updated);
   };
   // An equipment already picked in one row shouldn't be selectable again in another.
   const equipmentIdsInUse = items.map((it) => it.equipmentId).filter(Boolean);
   const equipmentOptionsFor = (idx) =>
-    equipment.filter((eq) => eq.id === items[idx].equipmentId || !equipmentIdsInUse.includes(eq.id));
+    equipment
+      .filter((eq) => eq.id === items[idx].equipmentId || !equipmentIdsInUse.includes(eq.id))
+      .filter((eq) => !items[idx].laboratory || labValueOf(eq) === items[idx].laboratory)
+      // Category / "Available only" filters (the equipment already picked always stays in its list)
+      .filter((eq) => eq.id === items[idx].equipmentId || categoryFilter === ALL_CATEGORIES || categoryOf(eq) === categoryFilter)
+      .filter((eq) => eq.id === items[idx].equipmentId || !availableOnly || isOpenForBooking(eq))
+      .sort((a, b) => labLabelOf(a).localeCompare(labLabelOf(b), undefined, { numeric: true }) || a.name.localeCompare(b.name));
+  // Laboratory dropdown: "All laboratories" + every laboratory that has equipment (with counts).
+  const laboratoryOptions = (() => {
+    const labs = new Map();
+    equipment.forEach((eq) => {
+      const value = labValueOf(eq);
+      const entry = labs.get(value) || { value, label: labLabelOf(eq), count: 0 };
+      entry.count += 1;
+      labs.set(value, entry);
+    });
+    return [
+      { value: ALL_LABS, label: `All laboratories (${equipment.length})` },
+      ...[...labs.values()]
+        .sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }))
+        .map(({ value, label, count }) => ({ value, label: `${label} (${count})` })),
+    ];
+  })();
+
+  // Fri-Sun dates are only bookable when every selected equipment allows non-official hours.
+  const allowNonOfficial =
+    items.length > 0 &&
+    items.every((it) => !!equipment.find((e) => e.id === it.equipmentId)?.allow_non_official_hours);
+  const slotsForSchedule = () => buildSlots(schedule, { allowNonOfficial });
+  const blockingEquipment = items
+    .map((it) => equipment.find((e) => e.id === it.equipmentId))
+    .filter((eq) => eq && !eq.allow_non_official_hours)
+    .map((eq) => eq.name);
+
+  // ---- Quantity limit: never more than the units still free -------------
+  // Before dates are picked: the total units. After: the units free on EVERY chosen date/time.
+  const timedSlots = slotsForSchedule().filter((slot) => slot.startDatetime && slot.endDatetime);
+  const pickedIds = [...new Set(items.map((it) => it.equipmentId).filter(Boolean))];
+  const availabilityKey = JSON.stringify({ ids: pickedIds, slots: timedSlots.map((sl) => [sl.startDatetime, sl.endDatetime]) });
+  const [freeUnits, setFreeUnits] = useState({}); // { [equipmentId]: units free on the chosen schedule }
+  const [checkingUnits, setCheckingUnits] = useState(false);
+
+  const loadFreeUnits = async (ids, slots) => {
+    const results = await Promise.all(slots.map((slot) =>
+      fetchEquipmentAvailability(ids.map((equipmentId) => ({ equipmentId, startDatetime: slot.startDatetime, endDatetime: slot.endDatetime })))));
+    const free = {};
+    results.forEach((availability) => {
+      ids.forEach((id) => {
+        const units = availability[id]?.available;
+        if (units == null) return;
+        free[id] = free[id] == null ? units : Math.min(free[id], units);
+      });
+    });
+    return free;
+  };
+
+  useEffect(() => {
+    const { ids, slots } = JSON.parse(availabilityKey);
+    let active = true;
+    if (!ids.length || !slots.length) { setFreeUnits({}); return undefined; }
+    setCheckingUnits(true);
+    const refresh = () => loadFreeUnits(ids, slots.map(([startDatetime, endDatetime]) => ({ startDatetime, endDatetime })))
+      .then((free) => { if (active) setFreeUnits(free); })
+      .catch((err) => console.error('Could not check equipment availability:', err))
+      .finally(() => { if (active) setCheckingUnits(false); });
+    refresh();
+    const intervalId = window.setInterval(refresh, 30000);
+    return () => { active = false; window.clearInterval(intervalId); };
+  }, [availabilityKey]);
+
+  // ---- Filters: category and "available only" -----------------------------
+  const [categoryFilter, setCategoryFilter] = useState(ALL_CATEGORIES);
+  const [availableOnly, setAvailableOnly] = useState(false);
+  const [openUnits, setOpenUnits] = useState({}); // { [equipmentId]: units free (on the chosen schedule, or right now) }
+  const allIdsKey = equipment.map((e) => e.id).join(',');
+  const windowKey = JSON.stringify(timedSlots.map((sl) => [sl.startDatetime, sl.endDatetime]));
+  useEffect(() => {
+    if (!availableOnly || !allIdsKey) return undefined;
+    let active = true;
+    const ids = allIdsKey.split(',').map(Number);
+    const windows = JSON.parse(windowKey);
+    const slots = windows.length
+      ? windows.map(([startDatetime, endDatetime]) => ({ startDatetime, endDatetime }))
+      : [{ startDatetime: toManilaInputValue(new Date()), endDatetime: toManilaInputValue(new Date(Date.now() + 60000)) }];
+    loadFreeUnits(ids, slots)
+      .then((free) => { if (active) setOpenUnits(free); })
+      .catch((err) => console.error('Could not check equipment availability:', err));
+    return () => { active = false; };
+  }, [availableOnly, allIdsKey, windowKey]);
+  const isOpenForBooking = (eq) => eq.status === 'available' && (openUnits[eq.id] == null || openUnits[eq.id] > 0);
+  const categoryOptions = [
+    { value: ALL_CATEGORIES, label: `All categories (${equipment.length})` },
+    ...summarizeCategories(equipment).map(({ category, count }) => ({ value: category, label: `${category} (${count})` })),
+  ];
+
+  const totalUnitsOf = (equipmentId) => Number(equipment.find((e) => e.id === equipmentId)?.quantity) || 0;
+  // Highest quantity that can be requested for this equipment right now.
+  const maxQuantityOf = (equipmentId) => {
+    const total = totalUnitsOf(equipmentId);
+    const free = freeUnits[equipmentId];
+    return free == null ? total : Math.max(0, Math.min(total, free));
+  };
+
+  // When the free units drop (dates changed / someone else reserved), lower the quantity to fit.
+  useEffect(() => {
+    setItems((prev) => {
+      let changed = false;
+      const next = prev.map((it) => {
+        if (!it.equipmentId) return it;
+        const max = maxQuantityOf(it.equipmentId);
+        if (max >= 1 && it.quantity > max) { changed = true; return { ...it, quantity: max }; }
+        return it;
+      });
+      return changed ? next : prev;
+    });
+  }, [freeUnits, equipment]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const updateScheduleDate = (field, value) => {
+    setSchedule((prev) => {
+      const next = { ...prev, [field]: value };
+      if (next.startDate && next.endDate && next.endDate < next.startDate) next.endDate = '';
+      return next;
+    });
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -103,8 +265,8 @@ const UserReserveEquipment = () => {
     setError('');
 
     const form = new FormData(e.currentTarget);
-    const adviserName = form.get('adviser_name');
-    const studentId = form.get('student_id');
+    const adviserName = isInstructor ? String(form.get('section_list') || '').trim() : form.get('adviser_name');
+    const studentId = user?.user_metadata?.student_id || form.get('student_id');
 
     if (!studentId || !studentId.toString().trim()) {
       triggerError('Please fill in the Student Number / ID Number field.');
@@ -116,7 +278,7 @@ const UserReserveEquipment = () => {
       return;
     }
 
-    if (!adviserName || !adviserName.toString().trim()) {
+    if (!isInstructor && (!adviserName || !adviserName.toString().trim())) {
       triggerError('Please fill in the Adviser / Supervisor / Project Leader field.');
       return;
     }
@@ -135,22 +297,21 @@ const UserReserveEquipment = () => {
 
     for (const it of items) {
       const eq = equipment.find((e) => e.id === it.equipmentId);
-      if (eq?.status === 'maintenance') {
-        triggerError(`"${eq.name}" is currently under maintenance and cannot be reserved.`);
+      if (isOutOfService(eq)) {
+        triggerError(`"${eq.name}" is currently ${equipmentStatusLabel(eq.status).toLowerCase()} and cannot be reserved.`);
         return;
       }
     }
 
     // Friday-Sunday is decided per equipment (each item has its own ON/OFF switch).
-    for (const it of items) {
-      const eq = equipment.find((e) => e.id === it.equipmentId);
-      if (!eq?.allow_non_official_hours && spansNonOfficialDay(startDatetime, endDatetime)) {
-        triggerError(`"${eq?.name || 'This equipment'}" is not accepting reservations on Fridays to Sundays (non-official hours). Please select Monday to Thursday.`);
-        return;
-      }
+    // A Fri-Sun date is only bookable when EVERY selected equipment allows it;
+    // otherwise it is shown as "not available" and left out of the booking.
+    if (isRangeTooLong(schedule)) {
+      triggerError(`You can book at most ${MAX_BOOKING_DAYS} dates in one reservation.`);
+      return;
     }
-
-    const dtError = validateDateTime(startDatetime, endDatetime, true);
+    const slots = slotsForSchedule();
+    const dtError = validateSlots(slots, { subject: 'This equipment' });
     if (dtError) {
       triggerError(dtError);
       return;
@@ -180,10 +341,22 @@ const UserReserveEquipment = () => {
       }
     }
 
+    for (const section of sections) {
+      if (!section.name.trim()) {
+        triggerError('Please enter the Section name of the class list (e.g. BSIT 3-1).');
+        return;
+      }
+      if (!parseClassList(section.text).length) {
+        triggerError(`Please paste or upload the class list of Section ${section.name.trim()}.`);
+        return;
+      }
+    }
+
     const rawFields = {
-      researcher_name: form.get('researcher_name'),
+      // Name always comes from the account (the field on screen is locked).
+      researcher_name: user?.user_metadata?.full_name || user?.email?.split('@')[0] || '',
       email: form.get('email') || '',
-      phone: form.get('phone') || '',
+      phone: user?.user_metadata?.phone || form.get('phone') || '',
       study_title: form.get('study_title') || '',
       research_purpose: form.get('purpose'),
     };
@@ -195,7 +368,7 @@ const UserReserveEquipment = () => {
 
     let pendingCounts;
     try {
-      pendingCounts = await fetchPendingReservationCounts([startDatetime.slice(0, 10)]);
+      pendingCounts = await fetchPendingReservationCounts([...new Set(slotsForSchedule().map((slot) => slot.date))]);
     } catch (countError) {
       console.error('Error checking pending reservation limit:', countError);
       triggerError('Could not verify pending bookings for the selected date. Please try again.');
@@ -208,7 +381,30 @@ const UserReserveEquipment = () => {
       return;
     }
 
-    const batchId = items.length > 1 && crypto?.randomUUID ? crypto.randomUUID() : null;
+    // Quantity must fit the units still free on every chosen date (checked again right now).
+    try {
+      const free = await loadFreeUnits([...new Set(items.map((it) => it.equipmentId))], slotsForSchedule());
+      for (const it of items) {
+        const eq = equipment.find((e) => e.id === it.equipmentId);
+        const units = Math.min(Number(eq?.quantity) || 0, free[it.equipmentId] ?? (Number(eq?.quantity) || 0));
+        if (units <= 0) {
+          triggerError(`"${eq?.name || 'This equipment'}" has no units left on your selected date/time. Please choose another schedule.`);
+          return;
+        }
+        if (it.quantity > units) {
+          triggerError(`Only ${units} unit${units === 1 ? '' : 's'} of "${eq?.name}" ${units === 1 ? 'is' : 'are'} available on your selected date/time. Please lower the quantity.`);
+          return;
+        }
+      }
+    } catch (availError) {
+      console.error('Error checking equipment availability:', availError);
+      triggerError('Could not check equipment availability. Please try again.');
+      return;
+    }
+
+    // One row per equipment per booked date; several rows share one batch_id (one reference).
+    const finalSlots = slotsForSchedule();
+    const batchId = items.length * finalSlots.length > 1 && crypto?.randomUUID ? crypto.randomUUID() : null;
 
     const sharedFields = {
       user_id: user.id,
@@ -216,10 +412,8 @@ const UserReserveEquipment = () => {
       email: rawFields.email.trim(),
       phone: rawFields.phone ? rawFields.phone.trim() : null,
       purpose: sanitizeText(rawFields.research_purpose, { maxLength: 1000 }),
-      start_datetime: manilaInputToISO(startDatetime),
-      end_datetime: manilaInputToISO(endDatetime),
       special_requirements: sanitizeText(form.get('special_requirements'), { maxLength: 500 }),
-      adviser_name: sanitizeText(adviserName, { maxLength: 150 }),
+      adviser_name: sanitizeText(adviserName, { maxLength: isInstructor ? 200 : 150 }),
       study_title: sanitizeText(rawFields.study_title, { maxLength: 300 }),
       unit_college: sanitizeText(unitCollege, { maxLength: 150 }),
       stakeholder_type: stakeholderType,
@@ -227,14 +421,19 @@ const UserReserveEquipment = () => {
       batch_id: batchId,
       members_list: members
         .filter((m) => m.name && m.name.trim())
-        .map((m) => `${sanitizeText(m.name, { maxLength: 150 })} — Student No. ${sanitizeText(m.studentNumber, { maxLength: 50 })}`),
+        .map((m) => `${sanitizeText(m.name, { maxLength: 150 })} — Student No. ${sanitizeText(m.studentNumber, { maxLength: 50 })}`)
+        .concat(isCvsuStakeholder ? sectionMemberEntries(sections) : []),
     };
 
-    const rows = items.map((it) => ({
-      ...sharedFields,
-      equipment_id: it.equipmentId,
-      quantity_reserved: it.quantity,
-    }));
+    const rows = finalSlots.flatMap((slot) =>
+      items.map((it) => ({
+        ...sharedFields,
+        start_datetime: manilaInputToISO(slot.startDatetime),
+        end_datetime: manilaInputToISO(slot.endDatetime),
+        equipment_id: it.equipmentId,
+        quantity_reserved: it.quantity,
+      }))
+    );
 
     const { data, error: err } = await supabase
       .from('equipment_reservations')
@@ -258,11 +457,11 @@ const UserReserveEquipment = () => {
     setSuccess(false);
     setReservationIds([]);
     setItems([emptyItem()]);
-    setStartDatetime('');
-    setEndDatetime('');
+    setSchedule(emptySchedule());
     setStakeholderChoice('');
-    setUnitCollege('');
+    setUnitCollege(lockedUnitCollege);
     setMembers([{ name: '' }]);
+    setSections([]);
     setError('');
   };
 
@@ -359,7 +558,10 @@ const UserReserveEquipment = () => {
                 placeholder="e.g. Juan Dela Cruz"
                 value={user?.user_metadata?.full_name || user?.email?.split('@')[0] || ''}
                 readOnly
-                className={`${inputClass} bg-muted/50 cursor-not-allowed`}
+                tabIndex={-1}
+                aria-readonly="true"
+                title="Taken from your account. It cannot be changed here."
+                className={`${inputClass} bg-muted/50 cursor-not-allowed select-none pointer-events-none`}
               />
             </div>
             <div>
@@ -368,12 +570,17 @@ const UserReserveEquipment = () => {
               </label>
               <input
                 name="student_id"
+                key={`sid-${user?.id || ''}`}
+                defaultValue={user?.user_metadata?.student_id || ''}
+                readOnly={!!user?.user_metadata?.student_id}
+                tabIndex={user?.user_metadata?.student_id ? -1 : undefined}
+                title={user?.user_metadata?.student_id ? 'Taken from your account. It cannot be changed here.' : undefined}
                 required
                 inputMode="numeric"
                 pattern="[0-9]*"
                 onInput={(e) => { e.target.value = e.target.value.replace(/\D/g, ''); }}
                 placeholder="e.g. 202302603"
-                className={inputClass}
+                className={`${inputClass} ${user?.user_metadata?.student_id ? 'bg-muted/50 cursor-not-allowed select-none pointer-events-none' : ''}`}
               />
             </div>
             <div>
@@ -382,6 +589,11 @@ const UserReserveEquipment = () => {
               </label>
               <input
                 name="phone"
+                key={`phone-${user?.id || ''}`}
+                defaultValue={user?.user_metadata?.phone || ''}
+                readOnly={!!user?.user_metadata?.phone}
+                tabIndex={user?.user_metadata?.phone ? -1 : undefined}
+                title={user?.user_metadata?.phone ? 'Taken from your account. It cannot be changed here.' : undefined}
                 type="tel"
                 inputMode="numeric"
                 maxLength={11}
@@ -389,7 +601,7 @@ const UserReserveEquipment = () => {
                 onInput={(e) => { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 11); }}
                 placeholder="e.g. 09171234567"
                 required
-                className={inputClass}
+                className={`${inputClass} ${user?.user_metadata?.phone ? 'bg-muted/50 cursor-not-allowed select-none pointer-events-none' : ''}`}
               />
             </div>
             <div>
@@ -450,7 +662,16 @@ const UserReserveEquipment = () => {
               <label className="block mb-1.5 font-semibold text-sm text-foreground">
                 Unit / College / Agency <span className="text-destructive">*</span>
               </label>
-              {isCvsuStakeholder ? (
+              {lockedUnitCollege ? (
+                <input
+                  name="unit_college"
+                  value={lockedUnitCollege}
+                  readOnly
+                  tabIndex={-1}
+                  title="Taken from your account. It cannot be changed here."
+                  className={`${inputClass} bg-muted/50 cursor-not-allowed select-none pointer-events-none`}
+                />
+              ) : isCvsuStakeholder ? (
                 <FormSelect
                   value={unitCollege}
                   onChange={setUnitCollege}
@@ -469,12 +690,24 @@ const UserReserveEquipment = () => {
                 />
               )}
             </div>
-            <div className="md:col-span-2">
-              <label className="block mb-1.5 font-semibold text-sm text-foreground">
-                Adviser / Supervisor / Project Leader <span className="text-destructive">*</span>
-              </label>
-              <input name="adviser_name" required placeholder="e.g. Dr. Maria Santos" className={inputClass} />
-            </div>
+            {isInstructor ? (
+              <div className="md:col-span-2">
+                <label className="block mb-1.5 font-semibold text-sm text-foreground">
+                  List of Section(s) <span className="text-xs font-normal text-muted-foreground ml-1">(optional)</span>
+                </label>
+                <input name="section_list" maxLength={200} placeholder="e.g. BSIT 3-1, BSIT 3-2" className={inputClass} />
+                <p className="text-xs text-muted-foreground mt-1.5">
+                  Sections who will come with you. Leave blank if none. If a whole section is coming, you don't need to list each student below.
+                </p>
+              </div>
+            ) : (
+              <div className="md:col-span-2">
+                <label className="block mb-1.5 font-semibold text-sm text-foreground">
+                  Adviser / Supervisor / Project Leader <span className="text-destructive">*</span>
+                </label>
+                <input name="adviser_name" required placeholder="e.g. Dr. Maria Santos" className={inputClass} />
+              </div>
+            )}
           </div>
         </div>
 
@@ -496,15 +729,26 @@ const UserReserveEquipment = () => {
               <label className="font-semibold text-sm text-foreground flex items-center gap-1.5">
                 <Users className="w-4 h-4 text-primary" />
                 List of Members / Users
-                <span className="text-xs font-normal text-muted-foreground normal-case ml-1">(those who will use the equipment)</span>
+                <span className="text-xs font-normal text-muted-foreground normal-case ml-1">(those who will use the equipment{isInstructor ? '; optional if a whole section is coming' : ''})</span>
               </label>
-              <button
-                type="button"
-                onClick={addMember}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border-2 border-primary/30 text-primary text-xs font-semibold hover:border-primary hover:bg-primary/5 transition-all cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" /> Add Member
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={addMember}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border-2 border-primary/30 text-primary text-xs font-semibold hover:border-primary hover:bg-primary/5 transition-all cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Add Member
+                </button>
+                {isCvsuStakeholder && (
+                  <button
+                    type="button"
+                    onClick={() => setSections([...sections, { name: '', text: '' }])}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border-2 border-primary/30 text-primary text-xs font-semibold hover:border-primary hover:bg-primary/5 transition-all cursor-pointer"
+                  >
+                    <Users className="w-3.5 h-3.5" /> Add Section List
+                  </button>
+                )}
+              </div>
             </div>
             <div className="hidden md:block rounded-xl border-2 !border-[color:var(--field-border)] overflow-hidden overflow-x-auto">
               <table className="w-full text-sm min-w-[480px]">
@@ -591,6 +835,16 @@ const UserReserveEquipment = () => {
                 </div>
               ))}
             </div>
+            {isCvsuStakeholder && (
+              <>
+                <SectionListInput sections={sections} onChange={setSections} />
+                {!sections.length && (
+                  <p className="text-[11px] text-muted-foreground mt-2">
+                    Coming as a whole section? Use <strong>Add Section List</strong> to paste or upload your class list instead of adding each member.
+                  </p>
+                )}
+              </>
+            )}
           </div>
 
           <div className="rounded-2xl border-2 !border-[color:var(--field-border)] bg-white/30 p-3 sm:p-5 space-y-4">
@@ -608,12 +862,45 @@ const UserReserveEquipment = () => {
               </button>
             </div>
 
+            {/* Filters for the equipment lists below */}
+            <div className="flex flex-wrap items-center gap-3 rounded-xl border-2 border-dashed !border-[color:var(--field-border)] px-3 py-2.5">
+              <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Filter</span>
+              <div className="flex-1 min-w-[220px]">
+                <FormSelect
+                  value={categoryFilter}
+                  onChange={(v) => setCategoryFilter(v || ALL_CATEGORIES)}
+                  placeholder="All categories"
+                  className={inputClass}
+                  options={categoryOptions}
+                />
+              </div>
+              <label className="inline-flex items-center gap-2 text-sm font-semibold text-foreground cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={availableOnly}
+                  onChange={(e) => setAvailableOnly(e.target.checked)}
+                  className="w-4 h-4 accent-[hsl(var(--primary))] cursor-pointer"
+                />
+                Available only
+                <span className="text-xs font-normal text-muted-foreground">({timedSlots.length ? 'on your selected date/time' : 'right now'})</span>
+              </label>
+            </div>
+
             <div className="space-y-3">
               {items.map((item, idx) => {
                 const eq = equipment.find((e) => e.id === item.equipmentId);
                 return (
                   <div key={idx} className="space-y-3">
                     <div className="flex flex-wrap sm:flex-nowrap gap-2 items-start">
+                      <div className="basis-full sm:basis-64 sm:flex-none min-w-0">
+                        <FormSelect
+                          value={item.laboratory || ALL_LABS}
+                          onChange={(v) => updateItemLaboratory(idx, v)}
+                          placeholder="All laboratories"
+                          className={inputClass}
+                          options={laboratoryOptions}
+                        />
+                      </div>
                       <FormSelect
                         searchable
                         value={item.equipmentId}
@@ -623,14 +910,21 @@ const UserReserveEquipment = () => {
                         className={inputClass}
                         options={equipmentOptionsFor(idx).map((option) => ({
                           value: option.id,
-                          label: `${option.name} — ${option.laboratories?.lab_name} (${option.laboratories?.lab_code})${option.status === 'maintenance' ? ' — Under Maintenance' : !option.allow_non_official_hours ? ' — Mon–Thu only' : ''}`,
-                          disabled: option.status === 'maintenance',
+                          // the laboratory is already the group heading / filter, so only the equipment name is shown
+                          label: `${option.name}${option.brand ? ` (${option.brand})` : ''}${isOutOfService(option) ? ` — ${equipmentStatusLabel(option.status)}` : !option.allow_non_official_hours ? ' — Mon–Thu only' : ''}`,
+                          disabled: isOutOfService(option),
+                          // headings by laboratory while browsing "All laboratories"; searching also matches the lab and equipment type
+                          group: item.laboratory ? undefined : labLabelOf(option),
+                          keywords: `${labLabelOf(option)} ${categoryOf(option)}`,
                         }))}
                       />
                       <div className="flex-1 sm:flex-none sm:w-28">
                         <input
                           type="number"
                           min={1}
+                          max={item.equipmentId && maxQuantityOf(item.equipmentId) >= 1 ? maxQuantityOf(item.equipmentId) : undefined}
+                          disabled={!!item.equipmentId && maxQuantityOf(item.equipmentId) < 1}
+                          title={item.equipmentId ? `Up to ${maxQuantityOf(item.equipmentId)} available` : undefined}
                           value={item.quantity}
                           onChange={(ev) => updateItemQuantity(idx, ev.target.value)}
                           required
@@ -651,17 +945,18 @@ const UserReserveEquipment = () => {
                     </div>
 
                     {eq && (
-                      <div className={`border rounded-xl p-4 text-sm flex items-start gap-3 ${eq.status === 'maintenance' ? 'bg-destructive/5 border-destructive/25' : 'bg-white/30 !border-[color:var(--field-border)]'}`}>
-                        <Info className={`w-5 h-5 flex-shrink-0 mt-0.5 ${eq.status === 'maintenance' ? 'text-destructive' : 'text-primary'}`} />
+                      <div className={`border rounded-xl p-4 text-sm flex items-start gap-3 ${isOutOfService(eq) ? 'bg-destructive/5 border-destructive/25' : 'bg-white/30 !border-[color:var(--field-border)]'}`}>
+                        <Info className={`w-5 h-5 flex-shrink-0 mt-0.5 ${isOutOfService(eq) ? 'text-destructive' : 'text-primary'}`} />
                         <div>
-                          <p className={`font-semibold mb-1 ${eq.status === 'maintenance' ? 'text-destructive' : 'text-primary'}`}>
+                          <p className={`font-semibold mb-1 ${isOutOfService(eq) ? 'text-destructive' : 'text-primary'}`}>
                             {eq.name}
-                            {eq.status === 'maintenance' && (
-                              <span className="ml-2 text-xs font-bold bg-destructive/15 text-destructive px-2 py-0.5 rounded-full">Under Maintenance</span>
+                            <span className="ml-2 text-[10px] font-bold uppercase tracking-wide bg-primary/10 text-primary px-2 py-0.5 rounded-full align-middle">{categoryOf(eq)}</span>
+                            {isOutOfService(eq) && (
+                              <span className="ml-2 text-xs font-bold bg-destructive/15 text-destructive px-2 py-0.5 rounded-full">{equipmentStatusLabel(eq.status)}</span>
                             )}
                           </p>
-                          {eq.status === 'maintenance' ? (
-                            <p className="text-destructive/80 text-xs">This equipment is currently under maintenance and cannot be reserved.</p>
+                          {isOutOfService(eq) ? (
+                            <p className="text-destructive/80 text-xs">This equipment is currently {equipmentStatusLabel(eq.status).toLowerCase()} and cannot be reserved.</p>
                           ) : (
                             <>
                               {eq.brand && (
@@ -670,8 +965,24 @@ const UserReserveEquipment = () => {
                                 </p>
                               )}
                               <p className="text-muted-foreground">
-                                <strong>Location:</strong> {eq.laboratories?.lab_name} ({eq.laboratories?.lab_code})
+                                <strong>Location:</strong> {labLabelOf(eq)}
                               </p>
+                              {(() => {
+                                const total = totalUnitsOf(eq.id);
+                                const max = maxQuantityOf(eq.id);
+                                const datesPicked = freeUnits[eq.id] != null;
+                                if (datesPicked && max < 1) {
+                                  return <p className="mt-1 text-xs font-semibold text-destructive">No units left on your selected date/time — all {total} are already reserved. Please choose another schedule.</p>;
+                                }
+                                return (
+                                  <p className={`mt-1 text-xs font-semibold ${datesPicked && max < total ? 'text-warning' : 'text-success'}`}>
+                                    {datesPicked
+                                      ? `${max} of ${total} unit${total === 1 ? '' : 's'} available on your selected date/time — you can reserve up to ${max}.`
+                                      : `${total} unit${total === 1 ? '' : 's'} in total. Set your date and time to see how many are free.`}
+                                    {checkingUnits && <span className="font-normal text-muted-foreground"> (checking…)</span>}
+                                  </p>
+                                );
+                              })()}
                               {eq.description && (
                                 <p className="text-muted-foreground mt-1">{eq.description}</p>
                               )}
@@ -707,24 +1018,32 @@ const UserReserveEquipment = () => {
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                 <div>
                   <label className="block mb-1.5 font-semibold text-xs text-muted-foreground">
-                    Start Date & Time
+                    Start Date
                   </label>
-                  <BookingDateTimeInput value={startDatetime} onChange={(v) => setStartDatetime(v)} min={getMinDatetimeLocal()}
-                          required
-                          className={inputClass}
-                        />
-                  <PendingReservationDateNotice date={startDatetime.slice(0, 10)} />
+                  <BookingDateTimeInput dateOnly value={schedule.startDate ? `${schedule.startDate}T00:00` : ''} onChange={(v) => updateScheduleDate('startDate', v.slice(0, 10))} min={getMinDatetimeLocal()}
+                    required
+                    className={inputClass}
+                  />
                 </div>
                 <div>
                   <label className="block mb-1.5 font-semibold text-xs text-muted-foreground">
-                    End Date & Time
+                    End Date <span className="font-normal">(only if booking more than one day)</span>
                   </label>
-                  <BookingDateTimeInput value={endDatetime} onChange={(v) => setEndDatetime(v)} min={startDatetime || getMinDatetimeLocal()}
-                          required
-                          className={inputClass}
-                        />
+                  <BookingDateTimeInput dateOnly value={schedule.endDate ? `${schedule.endDate}T00:00` : ''} onChange={(v) => updateScheduleDate('endDate', v.slice(0, 10))} min={schedule.startDate ? `${schedule.startDate}T00:00` : getMinDatetimeLocal()}
+                    className={inputClass}
+                  />
                 </div>
               </div>
+              <DailySchedule
+                startDate={schedule.startDate}
+                endDate={schedule.endDate}
+                dayTimes={schedule.dayTimes}
+                skipped={schedule.skipped}
+                allowNonOfficial={allowNonOfficial}
+                unavailableNote={blockingEquipment.length ? `${blockingEquipment.join(', ')} ${blockingEquipment.length > 1 ? 'are' : 'is'} not accepting reservations on Fridays to Sundays (non-official hours).` : 'Friday to Sunday are non-official hours.'}
+                onChange={({ dayTimes, skipped }) => setSchedule((prev) => ({ ...prev, dayTimes, skipped }))}
+                selectClass={inputClass}
+              />
             </div>
           </div>
         </div>

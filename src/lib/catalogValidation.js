@@ -13,20 +13,27 @@ export const isDuplicateLaboratory = (laboratories, candidate, excludeId) => {
   );
 };
 
-export const isDuplicateEquipment = (items, candidate, excludeId) => {
+const labIdOf = (value) => (value == null || value === '' ? null : Number(value));
+
+// Returns the existing equipment row with the same name, brand, model and
+// laboratory (ignoring case and extra spaces), or undefined if there is none.
+export const findDuplicateEquipment = (items, candidate, excludeId) => {
   const name = normalize(candidate.name);
   const brand = normalize(candidate.brand);
   const model = normalize(candidate.model);
-  const laboratoryId = candidate.laboratory_id == null ? null : Number(candidate.laboratory_id);
+  const laboratoryId = labIdOf(candidate.laboratory_id);
 
-  return items.some((item) =>
+  return (items || []).find((item) =>
     item.id !== excludeId &&
     normalize(item.name) === name &&
     normalize(item.brand) === brand &&
     normalize(item.model) === model &&
-    (item.laboratory_id == null ? null : Number(item.laboratory_id)) === laboratoryId
+    labIdOf(item.laboratory_id) === laboratoryId
   );
 };
+
+export const isDuplicateEquipment = (items, candidate, excludeId) =>
+  Boolean(findDuplicateEquipment(items, candidate, excludeId));
 
 export const catalogDuplicateErrorMessage = (error, type) => {
   if (error?.message?.includes('DUPLICATE_LABORATORY')) {

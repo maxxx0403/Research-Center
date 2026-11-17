@@ -92,3 +92,22 @@ export const notifyEquipmentRemoved = async ({ userId, equipmentName, reservatio
     reservationId
   });
 };
+/** Equipment handed to the borrower (Release). */
+export const notifyEquipmentReleased = async ({ userId, label, dueText, reservationId }) => createNotification({
+  userId,
+  type: 'equipment_released',
+  title: `${label} released to you`,
+  message: dueText ? `Please return it by ${dueText}.` : 'Please return it on time.',
+  reservationType: 'equipment',
+  reservationId,
+});
+
+/** Equipment received back (Return), with its condition. */
+export const notifyEquipmentReturned = async ({ userId, label, conditionText, notes, reservationId }) => createNotification({
+  userId,
+  type: 'equipment_returned',
+  title: `${label} returned`,
+  message: `Condition on return: ${conditionText}.${notes ? ` Notes: ${notes}` : ''} Thank you!`,
+  reservationType: 'equipment',
+  reservationId,
+});

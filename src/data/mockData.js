@@ -1,51 +1,3 @@
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 export const laboratories = [
 { id: 1, lab_name: 'Natural Product Laboratory', lab_code: 'LAB-NPL', description: 'Advanced facility for extraction, isolation, and characterization of natural compounds from plant and marine sources', max_capacity: 15, current_occupancy: 5, status: 'available', equipment_list: 'HPLC systems, GC-MS, Rotary evaporators, Ultrasonic baths, Freeze dryers, Analytical balances, Fume hoods', safety_requirements: 'Safety goggles, Lab coats, Chemical handling training required' },
 { id: 2, lab_name: 'Chemical Biology and Biotechnology Laboratory', lab_code: 'LAB-CBBL', description: 'State-of-the-art facility for chemical synthesis, biological assays, and biotechnology research', max_capacity: 20, current_occupancy: 12, status: 'available', equipment_list: 'PCR machines, Gel electrophoresis systems, Microplate readers, Incubators, Biosafety cabinets', safety_requirements: 'Biosafety Level 2 protocols, Sterile technique training' },
@@ -96,9 +48,9 @@ export function getStatusColor(status) {
   switch (status) {
     case 'available':return 'success';
     case 'reserved':return 'primary';
-    case 'in_use':case 'occupied':return 'warning';
+    case 'in_use':case 'occupied':case 'under_repair':return 'warning';
     case 'completed':return 'success';
-    case 'cancelled':case 'maintenance':case 'restricted':return 'destructive';
+    case 'cancelled':case 'maintenance':case 'damaged':case 'restricted':return 'destructive';
     default:return 'muted';
   }
 }

@@ -1,11 +1,12 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { FlaskConical, Microscope, Star, Send, Users, Calendar, Award, ChevronRight, CheckCircle2, Package, FileText, Download, Shield, Search, Lock } from 'lucide-react';
+import { ScrollText, FlaskConical, Microscope, Star, Send, Users, Calendar, Award, ChevronRight, CheckCircle2, Package, FileText, Download, Shield, Search, Lock } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import StatusBadge from '@/components/StatusBadge';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
 import cvsuLogo from '@/assets/cvsu-logo.png';
+import { FacilityTermsDialog } from '@/pages/PrivacyPolicy';
 
 
 
@@ -24,6 +25,7 @@ const Index = () => {
   const [equipmentCount, setEquipmentCount] = useState(0);
   const [labSearch, setLabSearch] = useState('');
   const [labStatusFilter, setLabStatusFilter] = useState('all');
+  const [showTerms, setShowTerms] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -105,6 +107,7 @@ const Index = () => {
         <div className="absolute -bottom-16 right-[6%] w-[420px] h-[420px] rounded-full bg-emerald-400/35 blur-3xl" />
       </div>
       <Navbar />
+      <FacilityTermsDialog open={showTerms} onClose={() => setShowTerms(false)} />
 
       {/* Hero + Features (contained card, matches design mockup) */}
       <section className="pt-28 pb-10 px-[4%]">
@@ -124,12 +127,13 @@ const Index = () => {
               Book laboratories, reserve equipment, submit research papers, and manage your research workflow — all in one platform.
             </p>
             <div className="flex gap-4 justify-center flex-wrap">
-              <Link to="/login" className="bg-card text-primary border-2 border-primary px-8 py-4 rounded-xl font-semibold text-base no-underline shadow-lg cursor-pointer hover:bg-primary hover:text-primary-foreground hover:-translate-y-1 hover:scale-[1.03] hover:shadow-2xl active:scale-[0.98] active:translate-y-0 transition-all duration-200 inline-flex items-center gap-2">
-                <Calendar className="w-5 h-5" /> Reserve Now
-              </Link>
-              <a href="#laboratories" className="bg-card text-primary border-2 border-primary px-8 py-4 rounded-xl font-semibold text-base no-underline hover:bg-primary hover:text-primary-foreground hover:-translate-y-1 transition-all inline-flex items-center gap-2">
-                <FlaskConical className="w-5 h-5" /> View Labs
-              </a>
+              <button
+                type="button"
+                onClick={() => setShowTerms(true)}
+                className="bg-card text-primary border-2 border-primary px-8 py-4 rounded-xl font-semibold text-base shadow-lg cursor-pointer hover:bg-primary hover:text-primary-foreground hover:-translate-y-1 hover:scale-[1.03] hover:shadow-2xl active:scale-[0.98] active:translate-y-0 transition-all duration-200 inline-flex items-center gap-2"
+              >
+                <ScrollText className="w-5 h-5" /> Terms and Conditions
+              </button>
             </div>
           </div>
 

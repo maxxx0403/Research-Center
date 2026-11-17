@@ -1,19 +1,22 @@
 import { useState, useEffect, useMemo, Fragment } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Check, X, Trash2, AlertCircle, FlaskConical, Package, Users, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, FileDown, MessageSquare, FileSpreadsheet, RefreshCw } from 'lucide-react';
+import { Check, X, Trash2, AlertCircle, FlaskConical, Package, Users, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, FileDown, MessageSquare, Download, Printer, RefreshCw, PackageCheck, PackageOpen } from 'lucide-react';
 import RowActions, { ItemCancelControls, SelectedCancelBar, useCancelSelection } from '@/components/RowActions';
-import StatusBadge from '@/components/StatusBadge';
+import StatusBadge, { BorrowInfo } from '@/components/StatusBadge';
+import { toast } from 'sonner';
+import { ReturnEquipmentDialog } from '@/components/FormSelect';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { updateReservationApproval, updateReservationApprovalBatch, cancelReservationItems } from '@/lib/reservationUtils';
+import { updateReservationApproval, updateReservationApprovalBatch, cancelReservationItems, releaseEquipment, returnEquipment, releasableRows, returnableRows, isLabConflictError, LAB_CONFLICT_MESSAGE, fetchSupersededRequests, labSeatCheck } from '@/lib/reservationUtils';
 import { downloadRequestForm, downloadLabBatchRequestForm } from '@/lib/generateRequestForm';
-import { notifyReservationApproved, notifyReservationRejected, notifyReservationCancelled } from '@/lib/notifications';
+import { notifyReservationApproved, notifyReservationRejected, notifyReservationCancelled, notifyReservationStatusChanged } from '@/lib/notifications';
 import { sendReservationEmail } from '@/lib/reservationEmail';
 import ReservationMessagesPanel from '@/components/ReservationMessagesPanel';
 import { logReservationAction } from '@/lib/activityLog';
-import { downloadReservationsExcel } from '@/lib/exportReservations';
+import { downloadReservationsExcel, printReservations } from '@/lib/exportReservations';
 import ReservationMonthFilter from '@/components/ReservationMonthFilter';
 import { isInMonth, monthLabel, monthRangeISO } from '@/lib/monthRange';
+import { matchesStakeholderGroup, stakeholderTypesOf, stakeholderGroupLabel } from '@/lib/stakeholder';
 
 // Rows of a multi-reservation that admin can still cancel one by one.
 const CANCELLABLE_ITEM_STATUSES = ['pending', 'reserved', 'in_use'];
@@ -57,6 +60,8 @@ const ReservationsPagination = ({ count, page, onPageChange }) => {
 
 // A submission (batch) is shown under a month when any of its items is scheduled in that month.
 const groupInMonth = (g, month) => !month || g.items.some((it) => isInMonth(it.start_datetime, month));
+// ...and under a stakeholder group (All / CvSU / Non-CvSU) when any of its items belongs to it.
+const groupInStakeholder = (g, group) => group === 'all' || g.items.some((it) => matchesStakeholderGroup(it.stakeholder_type, group));
 
 // Groups rows that share a batch_id (i.e. were submitted together in one
 // multi-lab or multi-equipment request) into a single logical entry, so the
@@ -90,8 +95,9 @@ const Reservations = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [tab, setTab] = useState('lab');
   const [highlightId, setHighlightId] = useState(null);
-  // "YYYY-MM" (by scheduled date) or '' for all months. Also decides what the Excel export contains.
+  // "YYYY-MM" (by scheduled date) or '' for all months. Also decides what Export Excel and Print contain.
   const [month, setMonth] = useState('');
+  const [stakeholder, setStakeholder] = useState('all'); // 'all' | 'cvsu' | 'non_cvsu'
   const [page, setPage] = useState(1);
 
   // Laboratory reservations state
@@ -115,35 +121,43 @@ const Reservations = () => {
   const [eqLoading, setEqLoading] = useState(true);
 
   const [downloadingId, setDownloadingId] = useState(null);
-  const [exportingExcel, setExportingExcel] = useState(false);
+  const [exportingFile, setExportingFile] = useState(''); // '' | 'excel' | 'print'
 
-  // Exports lab + equipment reservations to one Excel file: only the selected month, or everything when "All months".
-  const handleExportExcel = async () => {
-    setExportingExcel(true);
+  // Exports (Excel) or prints the reservations of the current tab, with the selected date + stakeholder filters.
+  const handleExport = async (mode) => {
+    setExportingFile(mode);
     try {
       const range = month ? monthRangeISO(month) : null;
-      const withMonth = (q) => (range ? q.gte('start_datetime', range.startISO).lt('start_datetime', range.endISO) : q);
+      const stakeholderTypes = stakeholderTypesOf(stakeholder);
+      const withMonth = (q) => {
+        let out = range ? q.gte('start_datetime', range.startISO).lt('start_datetime', range.endISO) : q;
+        if (stakeholderTypes) out = out.in('stakeholder_type', stakeholderTypes); // same CvSU / Non-CvSU filter as the list
+        return out;
+      };
       const [{ data: labData, error: labErr }, { data: eqData, error: eqErr }] = await Promise.all([
         withMonth(supabase
           .from('reservations')
-          .select('id, researcher_name, email, phone, unit_college, adviser_name, study_title, stakeholder_type, status, approved_at, rejection_reason, start_datetime, end_datetime, members_list, batch_id, created_at, laboratories(id, lab_name, lab_code, floor), reservation_equipment(id, quantity_reserved, equipment(id, name, brand, model))')
+          .select('id, researcher_name, email, phone, unit_college, adviser_name, study_title, stakeholder_type, status, approved_at, rejection_reason, start_datetime, end_datetime, members_list, batch_id, created_at, laboratories(id, lab_name, lab_code, floor, max_capacity), reservation_equipment(id, quantity_reserved, equipment(id, name, brand, model))')
           .order('created_at', { ascending: false })),
         withMonth(supabase
           .from('equipment_reservations')
-          .select('id, researcher_name, email, purpose, quantity_reserved, start_datetime, end_datetime, status, rejection_reason, created_at, batch_id, members_list, equipment(name, brand, laboratory_id, laboratories(id, lab_code, floor))')
+          .select('id, researcher_name, email, purpose, stakeholder_type, quantity_reserved, start_datetime, end_datetime, status, rejection_reason, created_at, batch_id, members_list, released_at, released_by_name, returned_at, returned_by_name, return_condition, return_notes, equipment(name, brand, model, laboratory_id, laboratories(id, lab_code, floor))')
           .order('created_at', { ascending: false })),
       ]);
       if (labErr || eqErr) throw labErr || eqErr;
-      if (!(labData || []).length && !(eqData || []).length) {
-        alert(month ? `No reservations found for ${monthLabel(month)}.` : 'There are no reservations to export.');
+      const type = tab === 'lab' ? 'lab' : 'equipment';
+      if (!(type === 'lab' ? labData : eqData)?.length) {
+        alert(`There are no ${type === 'lab' ? 'laboratory' : 'equipment'} reservations to export for the selected filters.`);
         return;
       }
-      await downloadReservationsExcel(labData || [], eqData || [], { month });
+      const opts = { type, month, stakeholder };
+      if (mode === 'print') printReservations(labData || [], eqData || [], opts);
+      else await downloadReservationsExcel(labData || [], eqData || [], opts);
     } catch (err) {
-      console.error('Excel export failed:', err);
+      console.error('Export failed:', err);
       alert('Could not export reservations. Please try again.');
     } finally {
-      setExportingExcel(false);
+      setExportingFile('');
     }
   };
   const [messagingItem, setMessagingItem] = useState(null);
@@ -151,7 +165,7 @@ const Reservations = () => {
   const fetchLabData = async () => {
     const { data } = await supabase
       .from('reservations')
-      .select('id, user_id, researcher_name, email, phone, unit_college, adviser_name, study_title, stakeholder_type, status, approved_at, rejection_reason, start_datetime, end_datetime, members_list, batch_id, laboratories(id, lab_name, lab_code, floor), reservation_equipment(id, quantity_reserved, equipment(id, name, brand, model))')
+      .select('id, user_id, researcher_name, email, phone, unit_college, adviser_name, study_title, stakeholder_type, status, approved_at, rejection_reason, start_datetime, end_datetime, members_list, batch_id, laboratories(id, lab_name, lab_code, floor, max_capacity), reservation_equipment(id, quantity_reserved, equipment(id, name, brand, model))')
       .order('created_at', { ascending: false });
     setLabItems(data || []);
     setLabLoading(false);
@@ -160,7 +174,7 @@ const Reservations = () => {
   const fetchEqData = async () => {
     const { data } = await supabase
       .from('equipment_reservations')
-      .select('id, user_id, researcher_name, email, purpose, quantity_reserved, start_datetime, end_datetime, status, rejection_reason, created_at, batch_id, members_list, equipment(name, brand, laboratory_id, laboratories(id, lab_code, floor))')
+      .select('id, user_id, researcher_name, email, purpose, stakeholder_type, quantity_reserved, start_datetime, end_datetime, status, rejection_reason, created_at, batch_id, members_list, released_at, released_by_name, returned_at, returned_by_name, return_condition, return_notes, equipment(name, brand, model, laboratory_id, laboratories(id, lab_code, floor))')
       .order('created_at', { ascending: false });
     setEqItems(data || []);
     setEqLoading(false);
@@ -186,6 +200,7 @@ const Reservations = () => {
       setHighlightId(`${type}-${id}`);
       setTab(type === 'lab' ? 'lab' : 'equipment');
       setMonth('');
+      setStakeholder('all');
       if (type === 'lab') {
         setLabSearch('');
         setLabFilterStatus('');
@@ -207,7 +222,7 @@ const Reservations = () => {
   // submission is searched/filtered — and shown — as a single row.
   const labGroups = useMemo(() => groupByBatch(labItems), [labItems]);
   const filteredLabGroups = labGroups.filter((g) => {
-    if (!groupInMonth(g, month)) return false;
+    if (!groupInMonth(g, month) || !groupInStakeholder(g, stakeholder)) return false;
     const r = g.primary;
     const term = labSearch.toLowerCase().trim();
     const matchSearch =
@@ -226,7 +241,7 @@ const Reservations = () => {
 
   const eqGroups = useMemo(() => groupByBatch(eqItems), [eqItems]);
   const filteredEqGroups = eqGroups.filter((g) => {
-    if (!groupInMonth(g, month)) return false;
+    if (!groupInMonth(g, month) || !groupInStakeholder(g, stakeholder)) return false;
     const r = g.primary;
     const term = eqSearch.toLowerCase().trim();
     const matchSearch =
@@ -244,22 +259,6 @@ const Reservations = () => {
   const pageStart = (currentPage - 1) * RESERVATIONS_PER_PAGE;
   const paginatedLabGroups = filteredLabGroups.slice(pageStart, pageStart + RESERVATIONS_PER_PAGE);
   const paginatedEqGroups = filteredEqGroups.slice(pageStart, pageStart + RESERVATIONS_PER_PAGE);
-
-  const handleResetLab = () => {
-    setLabSearch('');
-    setLabFilterStatus('');
-    setPage(1);
-    setLabLoading(true);
-    fetchLabData();
-  };
-
-  const handleResetEq = () => {
-    setEqSearch('');
-    setEqFilterStatus('');
-    setPage(1);
-    setEqLoading(true);
-    fetchEqData();
-  };
 
   // Lab actions
   // Cancel only the chosen labs/days (type 'lab') or equipment items (type 'equipment')
@@ -307,7 +306,11 @@ const Reservations = () => {
   };
 
   const updateLabStatusBatch = async (ids, status) => {
-    await supabase.from('reservations').update({ status }).in('id', ids);
+    const { error } = await supabase.from('reservations').update({ status }).in('id', ids);
+    if (error) { toast.error(isLabConflictError(error) ? LAB_CONFLICT_MESSAGE : `Failed to update status: ${error.message}`); return; }
+    const changed = labItems.filter((r) => ids.includes(r.id));
+    const owner = changed.find((r) => r.user_id);
+    if (owner) notifyReservationStatusChanged({ userId: owner.user_id, label: `Reservation #RC${String(ids[0]).padStart(5, '0')}`, status, reservationType: 'lab', reservationId: ids[0] });
     logReservationAction({ userId: user.id, type: 'lab', verb: STATUS_VERBS[status] || `Changed status to "${status}" for`, items: labItems.filter((r) => ids.includes(r.id)) });
     setLabItems((prev) => prev.map((r) => ids.includes(r.id) ? { ...r, status } : r));
   };
@@ -329,9 +332,21 @@ const Reservations = () => {
         notifyReservationApproved({ userId: group.primary.user_id, label });
       }
       sendReservationEmail({ event: 'approved', reservationType: 'lab', ids });
+      // Competing requests for the same lab and time were rejected by the database
+      // (with alternative schedules + a notification). Show it here and e-mail them.
+      const superseded = await fetchSupersededRequests(ids);
+      if (superseded.length) {
+        const byId = new Map(superseded.map((r) => [r.id, r]));
+        setLabItems((prev) => prev.map((r) => (byId.has(r.id) ? { ...r, ...byId.get(r.id) } : r)));
+        sendReservationEmail({ event: 'rejected', reservationType: 'lab', ids: superseded.map((r) => r.id) });
+        toast.success(`Approved. ${superseded.length} competing request${superseded.length === 1 ? ' was' : 's were'} rejected automatically and notified with other available schedules.`);
+      } else {
+        toast.success('Reservation approved.');
+      }
     } catch (error) {
       console.error('Error approving reservation:', error);
-      alert('Failed to approve reservation');
+      if (isLabConflictError(error)) toast.error(LAB_CONFLICT_MESSAGE);
+      else toast.error('Failed to approve reservation');
     }
   };
 
@@ -393,6 +408,38 @@ const Reservations = () => {
     setEqItems((prev) => prev.map((r) => r.id === id ? { ...r, status } : r));
   };
 
+  // ---- Equipment borrowing: Release -> Return --------------------------------
+  const [returningGroup, setReturningGroup] = useState(null);
+  const [borrowBusy, setBorrowBusy] = useState(false);
+  const actor = { id: user?.id, name: user?.user_metadata?.full_name || user?.email || 'Staff' };
+
+  const releaseEqGroup = async (group) => {
+    const rows = releasableRows(group.items);
+    if (!rows.length) { toast.error('Nothing to release yet: only approved equipment for today (or earlier) can be released.'); return; }
+    setBorrowBusy(true);
+    const { data, error } = await releaseEquipment(rows, actor);
+    setBorrowBusy(false);
+    if (error) { toast.error(`Could not release: ${error.message}`); return; }
+    const ids = rows.map((r) => r.id);
+    setEqItems((prev) => prev.map((r) => (ids.includes(r.id) ? { ...r, ...data } : r)));
+    logReservationAction({ userId: user.id, type: 'equipment', verb: 'Released', items: rows });
+    toast.success(`Released ${rows.length} item${rows.length === 1 ? '' : 's'}. The borrower was notified.`);
+  };
+
+  const confirmReturn = async ({ condition, notes }) => {
+    const rows = returnableRows(returningGroup?.items || []);
+    if (!rows.length) { setReturningGroup(null); return; }
+    setBorrowBusy(true);
+    const { data, error } = await returnEquipment(rows, actor, { condition, notes });
+    setBorrowBusy(false);
+    if (error) { toast.error(`Could not save the return: ${error.message}`); return; }
+    const ids = rows.map((r) => r.id);
+    setEqItems((prev) => prev.map((r) => (ids.includes(r.id) ? { ...r, ...data } : r)));
+    logReservationAction({ userId: user.id, type: 'equipment', verb: `Returned (${condition})`, items: rows });
+    setReturningGroup(null);
+    toast.success('Return recorded. The borrower was notified.');
+  };
+
   const approveEqGroup = async (group) => {
     const ids = group.activeIds;
     const label = ids.length > 1
@@ -433,7 +480,10 @@ const Reservations = () => {
   };
 
   const updateEqStatusBatch = async (ids, status) => {
-    await supabase.from('equipment_reservations').update({ status }).in('id', ids);
+    const { error } = await supabase.from('equipment_reservations').update({ status }).in('id', ids);
+    if (error) { toast.error(`Failed to update status: ${error.message}`); return; }
+    const owner = eqItems.find((r) => ids.includes(r.id) && r.user_id);
+    if (owner) notifyReservationStatusChanged({ userId: owner.user_id, label: `Equipment request #EQ${String(ids[0]).padStart(5, '0')}`, status, reservationType: 'equipment', reservationId: ids[0] });
     logReservationAction({ userId: user.id, type: 'equipment', verb: STATUS_VERBS[status] || `Changed status to "${status}" for`, items: eqItems.filter((r) => ids.includes(r.id)) });
     setEqItems((prev) => prev.map((r) => ids.includes(r.id) ? { ...r, status } : r));
   };
@@ -477,47 +527,93 @@ const Reservations = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-        <ReservationMonthFilter value={month} onChange={(value) => { setMonth(value); setPage(1); }} />
-        <button
-          onClick={handleExportExcel}
-          disabled={exportingExcel || labLoading || eqLoading}
-          className="inline-flex items-center gap-2 px-4 py-2 mb-2 sm:mb-2 rounded-lg text-sm font-semibold bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity self-start sm:self-auto"
-        >
-          <FileSpreadsheet className="w-4 h-4" />
-          {exportingExcel ? 'Exporting…' : month ? `Export ${monthLabel(month)} to Excel` : 'Export All to Excel'}
-        </button>
+        <ReservationMonthFilter
+          value={month}
+          onChange={(value) => { setMonth(value); setPage(1); }}
+          stakeholder={stakeholder}
+          onStakeholderChange={(value) => { setStakeholder(value); setPage(1); }}
+        />
         </div>
       </div>
 
-      {month && (
-        <p className="text-xs text-muted-foreground -mt-2">
-          Showing reservations scheduled in <span className="font-semibold text-foreground">{monthLabel(month)}</span>. The Excel export uses the same filter.
-        </p>
-      )}
-
-      {/* ── LABORATORY RESERVATIONS ── */}
-      {tab === 'lab' && (
-      <div className="space-y-4">
-        {/* Lab search bar */}
-        <div className="bg-card rounded-xl shadow-card p-4">
-          <div className="flex flex-wrap gap-3 items-end">
-            <div className="flex-1 min-w-[180px]">
-              <label className="block text-xs font-semibold text-muted-foreground mb-1">Search</label>
-              <input value={labSearch} onChange={(e) => { setLabSearch(e.target.value); setPage(1); }} placeholder="Name / email…" className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-card text-foreground focus:outline-none focus:border-primary" />
-            </div>
-            <div className="min-w-[140px]">
-              <label className="block text-xs font-semibold text-muted-foreground mb-1">Status</label>
-              <select value={labFilterStatus} onChange={(e) => { setLabFilterStatus(e.target.value); setPage(1); }} className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-card text-foreground">
-                <option value="">All</option>
+      {/* Export / print the list (current tab + current filters) */}
+      <div className="flex flex-wrap items-center justify-between gap-3 -mt-2">
+        {month || stakeholder !== 'all' ? (
+          <p className="text-xs text-muted-foreground flex-1 min-w-[220px]">
+            Showing reservations
+            {month && <> scheduled in <span className="font-semibold text-foreground">{monthLabel(month)}</span></>}
+            {stakeholder !== 'all' && <> from <span className="font-semibold text-foreground">{stakeholderGroupLabel(stakeholder)}</span> stakeholders</>}
+            . Export Excel and Print use the same filter and the tab you are viewing.
+          </p>
+        ) : <span />}
+        <div className="flex flex-wrap items-center justify-end gap-2 ml-auto">
+          {tab === 'lab' ? (
+            <>
+              <input
+                aria-label="Search"
+                value={labSearch}
+                onChange={(e) => { setLabSearch(e.target.value); setPage(1); }}
+                placeholder="Search name / email…"
+                className="w-48 sm:w-60 px-3 py-2 border border-border rounded-lg text-sm bg-card text-foreground focus:outline-none focus:border-primary"
+              />
+              <select
+                aria-label="Status"
+                value={labFilterStatus}
+                onChange={(e) => { setLabFilterStatus(e.target.value); setPage(1); }}
+                className="px-3 py-2 border border-border rounded-lg text-sm bg-card text-foreground"
+              >
+                <option value="">All status</option>
                 {['pending', 'reserved', 'in_use', 'completed', 'cancelled', 'rejected'].map((s) => (
                   <option key={s} value={s}>{s.replace('_', ' ')}</option>
                 ))}
               </select>
-            </div>
-            <button type="button" onClick={handleResetLab} className="bg-muted text-muted-foreground border border-border px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer hover:bg-border transition-colors">Reset</button>
-          </div>
+            </>
+          ) : (
+            <>
+              <input
+                aria-label="Search"
+                value={eqSearch}
+                onChange={(e) => { setEqSearch(e.target.value); setPage(1); }}
+                placeholder="Search researcher / equipment…"
+                className="w-48 sm:w-60 px-3 py-2 border border-border rounded-lg text-sm bg-card text-foreground focus:outline-none focus:border-primary"
+              />
+              <select
+                aria-label="Status"
+                value={eqFilterStatus}
+                onChange={(e) => { setEqFilterStatus(e.target.value); setPage(1); }}
+                className="px-3 py-2 border border-border rounded-lg text-sm bg-card text-foreground"
+              >
+                <option value="">All status</option>
+                {['pending', 'reserved', 'in_use', 'completed', 'cancelled', 'rejected'].map((s) => (
+                  <option key={s} value={s}>{s.replace('_', ' ')}</option>
+                ))}
+              </select>
+            </>
+          )}
+          <button
+            type="button"
+            onClick={() => handleExport('excel')}
+            disabled={!!exportingFile || labLoading || eqLoading}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
+          >
+            <Download className="w-4 h-4" />
+            {exportingFile === 'excel' ? 'Exporting…' : 'Export Excel'}
+          </button>
+          <button
+            type="button"
+            onClick={() => handleExport('print')}
+            disabled={!!exportingFile || labLoading || eqLoading}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold border border-border bg-card text-foreground hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            <Printer className="w-4 h-4" />
+            {exportingFile === 'print' ? 'Preparing…' : 'Print'}
+          </button>
         </div>
+      </div>
 
+      {/* ── LABORATORY RESERVATIONS ── */}
+      {tab === 'lab' && (
+      <div className="space-y-4">
         {/* Lab table */}
         <div className="bg-card rounded-xl shadow-card overflow-hidden">
           <div className="px-6 py-4 border-b border-border">
@@ -647,6 +743,25 @@ const Reservations = () => {
                     </td>
                     <td className="px-4 py-3">
                       <StatusBadge status={group.status} />
+                      {group.status === 'pending' && (() => {
+                        // Groups share a lab while people fit in its capacity: warn only when they do not all fit.
+                        const checks = group.items.map((it) => labSeatCheck(it, labItems));
+                        const full = checks.find((c) => !c.fitsNow);
+                        const clash = checks.find((c) => c.rivals.length && !c.allFit);
+                        const rivals = new Set(checks.flatMap((c) => c.rivals).map((o) => o.batch_id || o.id));
+                        if (full) {
+                          return (
+                            <p className="mt-1 inline-flex items-center gap-1 text-[0.65rem] font-bold text-destructive bg-destructive/10 px-2 py-0.5 rounded-full" title="Approving is blocked: the approved groups + this group are over the laboratory capacity.">
+                              ⛔ Lab full{full.capacity ? ` (${full.approvedPeople}/${full.capacity} seats taken, needs ${full.people})` : ''}
+                            </p>
+                          );
+                        }
+                        return clash && (
+                          <p className="mt-1 inline-flex items-center gap-1 text-[0.65rem] font-bold text-warning bg-warning/10 px-2 py-0.5 rounded-full" title="Other pending requests want the same laboratory and time and not all of them fit. Approving one rejects the ones that no longer fit, automatically.">
+                            ⚠ {rivals.size} competing request{rivals.size === 1 ? '' : 's'}{clash.capacity ? ` · ${clash.approvedPeople + clash.people + clash.rivalsPeople}/${clash.capacity} seats` : ''}
+                          </p>
+                        );
+                      })()}
                       {group.mixedStatus && <p className="text-[0.65rem] text-muted-foreground mt-1">Mixed — see breakdown</p>}
                     </td>
                     <td className="px-4 py-3">
@@ -748,26 +863,6 @@ const Reservations = () => {
       {tab === 'equipment' && (
       <div className="space-y-4">
 
-        {/* Equipment search bar */}
-        <div className="bg-card rounded-xl shadow-card p-4">
-          <div className="flex flex-wrap gap-3 items-end">
-            <div className="flex-1 min-w-[180px]">
-              <label className="block text-xs font-semibold text-muted-foreground mb-1">Search</label>
-              <input value={eqSearch} onChange={(e) => { setEqSearch(e.target.value); setPage(1); }} placeholder="Researcher or equipment…" className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-card text-foreground focus:outline-none focus:border-primary" />
-            </div>
-            <div className="min-w-[140px]">
-              <label className="block text-xs font-semibold text-muted-foreground mb-1">Status</label>
-              <select value={eqFilterStatus} onChange={(e) => { setEqFilterStatus(e.target.value); setPage(1); }} className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-card text-foreground">
-                <option value="">All</option>
-                {['pending', 'reserved', 'in_use', 'completed', 'cancelled', 'rejected'].map((s) => (
-                  <option key={s} value={s}>{s.replace('_', ' ')}</option>
-                ))}
-              </select>
-            </div>
-            <button type="button" onClick={handleResetEq} className="bg-muted text-muted-foreground border border-border px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer hover:bg-border transition-colors">Reset</button>
-          </div>
-        </div>
-
         {/* Equipment table */}
         <div className="bg-card rounded-xl shadow-card overflow-hidden">
           <div className="px-6 py-4 border-b border-border">
@@ -854,7 +949,7 @@ const Reservations = () => {
                       {new Date(r.start_datetime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} – {new Date(r.end_datetime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
                     </td>
                     <td className="px-4 py-3">
-                      <StatusBadge status={group.status} />
+                      <StatusBadge status={group.status} /><BorrowInfo rows={group.items} />
                       {group.mixedStatus && <p className="text-[0.65rem] text-muted-foreground mt-1">Mixed — see breakdown</p>}
                     </td>
                     <td className="px-4 py-3">
@@ -862,6 +957,8 @@ const Reservations = () => {
                         items={[
                           { label: 'Accept', icon: Check, success: true, hidden: group.status !== 'pending', onClick: () => approveEqGroup(group) },
                           { label: 'Reject', icon: X, destructive: true, hidden: group.status !== 'pending', onClick: () => setRejectingEqId(group.key) },
+                          { label: 'Release equipment', icon: PackageOpen, success: true, hidden: !releasableRows(group.items).length, onClick: () => releaseEqGroup(group) },
+                          { label: 'Mark as returned', icon: PackageCheck, success: true, hidden: !returnableRows(group.items).length, onClick: () => setReturningGroup(group) },
                           {
                             label: 'Change status',
                             icon: RefreshCw,
@@ -1017,6 +1114,9 @@ const Reservations = () => {
           rejectionReason={messagingItem.reason}
           onClose={() => setMessagingItem(null)}
         />
+      )}
+      {returningGroup && (
+        <ReturnEquipmentDialog rows={returnableRows(returningGroup.items)} busy={borrowBusy} onCancel={() => setReturningGroup(null)} onConfirm={confirmReturn} />
       )}
     </div>
   );

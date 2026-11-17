@@ -41,7 +41,7 @@ const StaffActivityLogs = () => {
     let { data, error } = await fetchAllPages(() =>
       supabase
         .from('activity_logs')
-        .select('id, action, description, floor, actor, created_at')
+        .select('id, action, description, floor, actor, actor_role, created_at')
         .not('actor', 'is', null)
         .or(rules.join(','))
         .gte('created_at', startISO)
@@ -55,7 +55,7 @@ const StaffActivityLogs = () => {
       const fallback = await fetchAllPages(() =>
         supabase
           .from('activity_logs')
-          .select('id, action, description, floor, actor, created_at')
+          .select('id, action, description, floor, actor, actor_role, created_at')
           .eq('actor', myName)
           .gte('created_at', startISO)
           .lt('created_at', endISO)

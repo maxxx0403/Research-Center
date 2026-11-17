@@ -1,15 +1,17 @@
 import { Link, useLocation, Outlet, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, CalendarCheck, FlaskConical, MessageSquare, LogOut, ChevronLeft, ChevronDown, FileText, Package, Settings, LifeBuoy } from 'lucide-react';
+import { LayoutDashboard, CalendarCheck, FlaskConical, MessageSquare, LogOut, ChevronLeft, ChevronDown, FileText, Package, Settings, LifeBuoy, Microscope, ScrollText } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import NotificationBell from '@/components/NotificationBell';
 import SidebarNav from '@/components/SidebarNav';
+import { FacilityTermsDialog } from '@/pages/PrivacyPolicy';
 import cvsuLogo from '@/assets/cvsu-logo.png';
 import '@/glass.css';
 
 const menuGroups = [
   { title: 'Main', items: [
-    { to: '/user/dashboard', icon: LayoutDashboard, label: 'Dashboard' }] },
+    { to: '/user/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+    { to: '/user/availability', icon: Microscope, label: 'Labs & Equipment' }] },
   { title: 'Reservations', items: [
     { to: '/user/reservations', icon: CalendarCheck, label: 'My Reservations' },
     { to: '/user/reserve', icon: FlaskConical, label: 'Reserve Lab' },
@@ -18,7 +20,8 @@ const menuGroups = [
     { to: '/user/forms', icon: FileText, label: 'Forms and Papers' }] },
   { title: 'Support', items: [
     { to: '/user/feedback', icon: MessageSquare, label: 'Feedback' },
-    { to: '/user/help', icon: LifeBuoy, label: 'Help & Support' }] }];
+    { to: '/user/help', icon: LifeBuoy, label: 'Help & Support' },
+    { action: 'terms', icon: ScrollText, label: 'Terms and Conditions' }] }];
 const menuItems = menuGroups.flatMap((g) => g.items);
 
 
@@ -26,6 +29,7 @@ const UserLayout = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, signOut, loading } = useAuth();
+  const [showTerms, setShowTerms] = useState(false);
   // On phones the sidebar is a drawer, so it starts closed; on desktop it starts open.
   const [sidebarOpen, setSidebarOpen] = useState(() => typeof window === 'undefined' || window.innerWidth >= 1024);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -73,6 +77,8 @@ const UserLayout = () => {
 
   return (
     <div className="glass-ui relative isolate flex min-h-screen bg-background font-body">
+      {/* Terms pop-up lives outside the sidebar: the sidebar's transform would trap a fixed pop-up inside it */}
+      <FacilityTermsDialog open={showTerms} onClose={() => setShowTerms(false)} />
       {/* Soft color blobs so the glass has something to blur */}
       <div aria-hidden className="fixed inset-0 -z-10 pointer-events-none overflow-hidden">
         <div className="absolute -top-28 -left-16 w-[520px] h-[520px] rounded-full bg-primary/35 blur-3xl" />
@@ -91,7 +97,7 @@ const UserLayout = () => {
             <div className={`overflow-hidden whitespace-nowrap transition-all duration-[350ms] ease-[cubic-bezier(0.22,1,0.36,1)] ${sidebarOpen ? 'max-w-[200px] opacity-100' : 'lg:max-w-0 lg:opacity-0'}`}><div className="font-heading font-bold text-sm leading-tight">CvSU Research Center</div><div className="text-[0.7rem] text-primary-foreground/50">Researcher Portal</div></div>
           </div>
         </div>
-        <SidebarNav groups={menuGroups} sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />
+        <SidebarNav groups={menuGroups} sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} onAction={(action) => { if (action === 'terms') setShowTerms(true); }} />
       </aside>
 
       <div className={`flex-1 min-w-0 flex flex-col min-h-screen transition-[margin] duration-[350ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${sidebarOpen ? 'lg:ml-[260px]' : 'lg:ml-16'}`}>

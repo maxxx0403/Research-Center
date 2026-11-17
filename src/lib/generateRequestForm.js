@@ -30,6 +30,7 @@ import {
 
 import cvsuLogo from '@/assets/cvsu-logo.png';
 import researchCenterLogo from '@/assets/research-center-logo.png';
+import { formNamesText } from '@/lib/validation';
 
 const CHECKED = '☒';
 const UNCHECKED = '☐';
@@ -49,8 +50,8 @@ const formatDate = (isoString) => {
  * and reservation_equipment(quantity_reserved, equipment(name)).
  */
 export const buildRequestFormData = (reservation) => {
-  const members = Array.isArray(reservation.members_list) ? reservation.members_list : [];
-  const allNames = [reservation.researcher_name, ...members].filter(Boolean).join(', ');
+  // Members of a whole section show as just the section, e.g. "Section BSIT 3-1 (40 students)"
+  const allNames = formNamesText(reservation.researcher_name, reservation.members_list);
 
   const labLabel = reservation.laboratories
     ? `${reservation.laboratories.lab_name} (${reservation.laboratories.lab_code})`
@@ -111,7 +112,7 @@ export const buildEquipmentBatchFormData = (rows) => {
   const labNames = [...new Set(rows.map((r) => r.equipment?.laboratories?.lab_name).filter(Boolean))];
 
   return {
-    name: first.researcher_name || '',
+    name: formNamesText(first.researcher_name, first.members_list),
     contact: first.phone ? String(first.phone) : '',
     email: first.email || '',
     address: 'N/A',
@@ -134,8 +135,7 @@ export const buildEquipmentBatchFormData = (rows) => {
  */
 export const buildLabBatchFormData = (rows) => {
   const first = rows[0] || {};
-  const members = Array.isArray(first.members_list) ? first.members_list : [];
-  const allNames = [first.researcher_name, ...members].filter(Boolean).join(', ');
+  const allNames = formNamesText(first.researcher_name, first.members_list);
 
   const items = rows.flatMap((r) => {
     const equipmentItems = (r.reservation_equipment || []).map((re) => ({
@@ -323,7 +323,11 @@ const buildStakeholderTable = (data) => {
         children: [cell([textPara(stakeholderLine)], { colSpan: 2 })],
       }),
       labelValueRow('Unit / College / Agency:', data.unit),
-      labelValueRow('Name of Adviser / Supervisor / Project Leader (if applicable):', data.adviser, { labelWidth: 45 }),
+      labelValueRow(
+        data.isFaculty ? 'List of Section(s) with the Instructor (if applicable):' : 'Name of Adviser / Supervisor / Project Leader (if applicable):',
+        data.adviser,
+        { labelWidth: 45 }
+      ),
       labelValueRow('Title of the Study/Activity:', data.title),
       labelValueRow('Laboratories / Facilities Requested:', data.labsSummary, { labelWidth: 45 }),
     ],

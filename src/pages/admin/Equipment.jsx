@@ -8,12 +8,16 @@ import RowActions from '@/components/RowActions';
 import { useAuth } from '@/contexts/AuthContext';
 import { logCatalogAction } from '@/lib/activityLog';
 import CatalogPagination from '@/components/CatalogPagination';
-import { catalogDuplicateErrorMessage, isDuplicateEquipment } from '@/lib/catalogValidation';
+import { catalogDuplicateErrorMessage, findDuplicateEquipment } from '@/lib/catalogValidation';
+import { addEquipmentOrMerge, updateEquipmentOrMerge, availableNowOf, stockLevelOf, inUseNowOf, damagedCountOf, maintenanceCountOf, underRepairCountOf, EQUIPMENT_STATUSES, equipmentStatusLabel } from '@/lib/equipmentAvailability';
+import { useCurrentEquipmentStock } from '@/hooks/useEquipmentAvailability';
+import { EquipmentStockAlert, EquipmentStockBadge } from '@/components/StatusBadge';
+import { EQUIPMENT_CATEGORIES, categoryOf } from '@/lib/equipmentCategories';
 
 const ACTIVE_STATUSES = ['pending', 'reserved', 'in_use'];
 const EQUIPMENT_PER_PAGE = 20;
 
-const EMPTY_EQ = { name: '', brand: '', model: '', laboratory_id: '', quantity: '1' };
+const EMPTY_EQ = { name: '', category: '', brand: '', model: '', laboratory_id: '', quantity: '1', min_quantity: '' };
 const inputCls = "w-full px-3 py-2.5 border border-border rounded-lg text-sm bg-card text-foreground focus:outline-none focus:border-primary";
 
 const AdminEquipment = () => {
@@ -49,6 +53,7 @@ const AdminEquipment = () => {
   }, [deleteTarget]);
 
   const affectedCount = affected.standalone.length + affected.attached.length;
+  const { stock } = useCurrentEquipmentStock(equipment.map((e) => e.id));
 
   useEffect(() => {
     const fetch = async () => {
@@ -83,10 +88,12 @@ const AdminEquipment = () => {
     setEditTarget(eq);
     setForm({
       name: eq.name,
+      category: eq.category || '',
       brand: eq.brand || '',
       model: eq.model || '',
       laboratory_id: eq.laboratory_id ? String(eq.laboratory_id) : '',
       quantity: String(eq.quantity),
+      min_quantity: eq.min_quantity == null ? '' : String(eq.min_quantity),
     });
     setShowModal(true);
   };
@@ -98,38 +105,62 @@ const AdminEquipment = () => {
     const qty = Math.max(1, Number(form.quantity) || 1);
     const payload = {
       name: form.name.trim(),
+      category: form.category.trim() || null,
       brand: form.brand.trim() || null,
       model: form.model.trim() || null,
       laboratory_id: form.laboratory_id ? Number(form.laboratory_id) : null,
       quantity: qty,
+      // Warning level for low stock (empty = default: warn at 1 left)
+      min_quantity: form.min_quantity === '' ? null : Math.max(0, Number(form.min_quantity) || 0),
     };
 
-    if (isDuplicateEquipment(equipment, payload, editTarget?.id)) {
-      setSaving(false);
-      toast.error('This equipment with the same name, brand, model, and laboratory already exists.');
-      return;
-    }
-
     if (editTarget) {
-      const { data, error } = await supabase.from('equipment').update(payload).eq('id', editTarget.id).select('*, laboratories(lab_name, lab_code)').single();
+      const { data, error, merged, mergedInto } = await updateEquipmentOrMerge(editTarget, payload);
       setSaving(false);
       if (error) { toast.error(catalogDuplicateErrorMessage(error, 'update')); return; }
-      setEquipment((prev) => prev.map((e) => e.id === editTarget.id ? data : e));
-      logCatalogAction({
-        userId: user?.id,
-        type: 'equipment',
-        verb: 'Updated',
-        item: data,
-        laboratoryIds: [editTarget.laboratory_id, data.laboratory_id],
-      });
-      toast.success(`${data.name} updated successfully!`);
+      if (merged) {
+        // The edited row was folded into the matching one.
+        setEquipment((prev) => prev.filter((e) => e.id !== editTarget.id).map((e) => e.id === data.id ? data : e));
+        logCatalogAction({
+          userId: user?.id,
+          type: 'equipment',
+          verb: 'Updated',
+          item: data,
+          laboratoryIds: [editTarget.laboratory_id, data.laboratory_id],
+          detail: `Merged duplicate entry; Quantity: ${mergedInto.quantity} → ${data.quantity}`,
+        });
+        toast.success(`${data.name} already exists in this laboratory — merged. Quantity is now ${data.quantity}.`);
+      } else {
+        setEquipment((prev) => prev.map((e) => e.id === editTarget.id ? data : e));
+        logCatalogAction({
+          userId: user?.id,
+          type: 'equipment',
+          verb: 'Updated',
+          item: data,
+          laboratoryIds: [editTarget.laboratory_id, data.laboratory_id],
+        });
+        toast.success(`${data.name} updated successfully!`);
+      }
     } else {
-      const { data, error } = await supabase.from('equipment').insert({ ...payload, status: 'available', available_quantity: qty }).select('*, laboratories(lab_name, lab_code)').single();
+      const { data, error, merged, addedQuantity } = await addEquipmentOrMerge(payload);
       setSaving(false);
       if (error) { toast.error(catalogDuplicateErrorMessage(error, 'add')); return; }
-      setEquipment((prev) => [...prev, data]);
-      logCatalogAction({ userId: user?.id, type: 'equipment', verb: 'Added', item: data, laboratoryIds: [data.laboratory_id] });
-      toast.success(`${data.name} added successfully!`);
+      if (merged) {
+        setEquipment((prev) => prev.some((e) => e.id === data.id) ? prev.map((e) => e.id === data.id ? data : e) : [...prev, data]);
+        logCatalogAction({
+          userId: user?.id,
+          type: 'equipment',
+          verb: 'Updated',
+          item: data,
+          laboratoryIds: [data.laboratory_id],
+          detail: `Added ${addedQuantity} unit${addedQuantity === 1 ? '' : 's'}; Quantity: ${data.quantity - addedQuantity} → ${data.quantity}`,
+        });
+        toast.success(`${data.name} already exists in this laboratory — added ${addedQuantity} to its quantity (now ${data.quantity}).`);
+      } else {
+        setEquipment((prev) => [...prev, data]);
+        logCatalogAction({ userId: user?.id, type: 'equipment', verb: 'Added', item: data, laboratoryIds: [data.laboratory_id] });
+        toast.success(`${data.name} added successfully!`);
+      }
     }
 
     setForm(EMPTY_EQ); setShowModal(false); setEditTarget(null);
@@ -172,6 +203,13 @@ const AdminEquipment = () => {
       : `${equipmentName} deleted.`);
     setDeleteTarget(null);
   };
+
+  // Live check while the form is open: same name, brand, model and laboratory
+  // as an existing item means the quantity will be added to that item.
+  const duplicateMatch = showModal && form.name.trim()
+    ? findDuplicateEquipment(equipment, { ...form, laboratory_id: form.laboratory_id || null }, editTarget?.id)
+    : null;
+  const enteredQty = Math.max(1, Number(form.quantity) || 1);
 
   // Friday - Sunday bookings ON/OFF
   const toggleNonOfficial = async (item, value) => {
@@ -218,6 +256,8 @@ const AdminEquipment = () => {
         </div>
       </div>
 
+      <EquipmentStockAlert items={filtered} stock={stock} />
+
       <div className="bg-card rounded-xl shadow-card overflow-hidden">
         <div className="px-6 py-4 border-b border-border">
           <h2 className="font-heading text-sm font-bold">Equipment Inventory <span className="bg-muted text-muted-foreground px-2 py-0.5 rounded-full text-xs ml-2">{filtered.length}</span></h2>
@@ -230,23 +270,37 @@ const AdminEquipment = () => {
                 <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Brand</th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Model</th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Laboratory</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Qty</th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Qty Available</th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">In Use</th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Under Repair</th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Lost / Damaged</th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">For Maintenance</th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody>
               {loading ?
-                <tr><td colSpan={6} className="text-center py-12 text-muted-foreground">Loading…</td></tr> :
+                <tr><td colSpan={10} className="text-center py-12 text-muted-foreground">Loading…</td></tr> :
                 filtered.length ? paginatedEquipment.map((e) =>
                   <tr key={e.id} className="border-b border-muted hover:bg-muted/30">
-                    <td className="px-4 py-3 font-semibold">{e.name}</td>
+                    <td className="px-4 py-3">
+                      <div className="font-semibold">{e.name}</div>
+                      <div className="text-[11px] text-muted-foreground mt-0.5">{categoryOf(e)}</div>
+                    </td>
                     <td className="px-4 py-3 text-muted-foreground">{e.brand || '—'}</td>
                     <td className="px-4 py-3 text-muted-foreground text-xs">{e.model || '—'}</td>
                     <td className="px-4 py-3">
                       <code className="text-xs bg-muted px-1.5 py-0.5 rounded">{e.laboratories?.lab_code || '—'}</code>
                       <div className="text-xs text-muted-foreground mt-0.5">{e.laboratories?.lab_name}</div>
                     </td>
-                    <td className="px-4 py-3 text-sm font-semibold">{e.quantity}</td>
+                    <td className="px-4 py-3 text-sm">
+                      <div className="font-semibold whitespace-nowrap">{availableNowOf(e, stock) ?? e.quantity} / {e.quantity}</div>
+                      {stockLevelOf(e, stock) !== 'ok' && <div className="mt-1"><EquipmentStockBadge item={e} stock={stock} /></div>}
+                    </td>
+                    <td className="px-4 py-3">{inUseNowOf(e, stock) > 0 ? <span className="font-semibold text-warning">{inUseNowOf(e, stock)}</span> : <span className="text-muted-foreground">0</span>}</td>
+                    <td className="px-4 py-3">{underRepairCountOf(e) > 0 ? <span className="font-semibold text-warning">{underRepairCountOf(e)}</span> : <span className="text-muted-foreground">0</span>}</td>
+                    <td className="px-4 py-3">{damagedCountOf(e) > 0 ? <span className="font-semibold text-destructive">{damagedCountOf(e)}</span> : <span className="text-muted-foreground">0</span>}</td>
+                    <td className="px-4 py-3">{maintenanceCountOf(e) > 0 ? <span className="font-semibold text-foreground">{maintenanceCountOf(e)}</span> : <span className="text-muted-foreground">0</span>}</td>
                     <td className="px-4 py-3">
                       <RowActions
                         items={[
@@ -262,16 +316,12 @@ const AdminEquipment = () => {
                             label: 'Change status',
                             icon: RefreshCw,
                             value: e.status,
-                            options: [
-                              { value: 'available', label: 'Available' },
-                              { value: 'maintenance', label: 'Under Maintenance' },
-                              { value: 'in_use', label: 'In Use' },
-                            ],
+                            options: EQUIPMENT_STATUSES,
                             onChange: async (newStatus) => {
                               const { error } = await supabase.from('equipment').update({ status: newStatus }).eq('id', e.id);
                               if (error) { toast.error('Failed to update status'); return; }
                               setEquipment((prev) => prev.map((eq) => eq.id === e.id ? { ...eq, status: newStatus } : eq));
-                              toast.success(`Status updated to ${newStatus}`);
+                              toast.success(`Status updated to ${equipmentStatusLabel(newStatus)}`);
                             },
                           },
                           { separator: true },
@@ -281,7 +331,7 @@ const AdminEquipment = () => {
                     </td>
                   </tr>
                 ) :
-                <tr><td colSpan={6} className="text-center py-12 text-muted-foreground">No equipment found</td></tr>
+                <tr><td colSpan={10} className="text-center py-12 text-muted-foreground">No equipment found</td></tr>
               }
             </tbody>
           </table>
@@ -309,6 +359,14 @@ const AdminEquipment = () => {
                 <label className="block text-xs font-semibold text-foreground mb-1">Equipment Name <span className="text-destructive">*</span></label>
                 <input name="name" value={form.name} onChange={handleChange} placeholder="e.g. Digital Microscope" className={inputCls} required />
               </div>
+              <div>
+                <label className="block text-xs font-semibold text-foreground mb-1">Category</label>
+                <select name="category" value={form.category} onChange={handleChange} className={inputCls}>
+                  <option value="">Automatic (based on the equipment name)</option>
+                  {[...new Set([...(form.category && !EQUIPMENT_CATEGORIES.includes(form.category) ? [form.category] : []), ...EQUIPMENT_CATEGORIES])].map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+                <p className="text-[11px] text-muted-foreground mt-1">Researchers use the category to find this equipment faster when reserving.</p>
+              </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-foreground mb-1">Brand</label>
@@ -331,11 +389,24 @@ const AdminEquipment = () => {
                   <label className="block text-xs font-semibold text-foreground mb-1">Quantity</label>
                   <input name="quantity" type="number" min="1" value={form.quantity} onChange={handleChange} className={inputCls} />
                 </div>
+                <div>
+                  <label className="block text-xs font-semibold text-foreground mb-1">Minimum Quantity <span className="font-normal text-muted-foreground">(low-stock warning)</span></label>
+                  <input name="min_quantity" type="number" min="0" value={form.min_quantity} onChange={handleChange} placeholder="Default: 1" className={inputCls} />
+                  <p className="text-[0.7rem] text-muted-foreground mt-1">Admins and staff are notified when the units available drop to this number.</p>
+                </div>
               </div>
+              {duplicateMatch && (
+                <div className="bg-primary/10 border border-primary/25 rounded-lg p-3 text-xs text-foreground">
+                  <strong>{duplicateMatch.name}</strong> with the same brand and model already exists in this laboratory (Qty {duplicateMatch.quantity}).
+                  {editTarget
+                    ? <> Saving will merge this entry into it — the quantity will become <strong>{(Number(duplicateMatch.quantity) || 0) + enteredQty}</strong>.</>
+                    : <> Saving will add {enteredQty} to it — the quantity will become <strong>{(Number(duplicateMatch.quantity) || 0) + enteredQty}</strong>.</>}
+                </div>
+              )}
               <div className="flex gap-3 justify-end pt-2">
                 <button type="button" onClick={() => { setShowModal(false); setEditTarget(null); }} className="px-4 py-2 rounded-lg border border-border hover:bg-muted text-sm font-semibold cursor-pointer bg-transparent text-foreground">Cancel</button>
                 <button type="submit" disabled={saving} className="gradient-primary text-primary-foreground px-5 py-2 rounded-lg text-sm font-semibold border-none cursor-pointer hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
-                  {saving ? (editTarget ? 'Saving…' : 'Adding…') : (editTarget ? 'Save Changes' : 'Add Equipment')}
+                  {saving ? (editTarget ? 'Saving…' : 'Adding…') : duplicateMatch ? (editTarget ? 'Merge & Save' : 'Add to Quantity') : (editTarget ? 'Save Changes' : 'Add Equipment')}
                 </button>
               </div>
             </form>

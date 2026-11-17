@@ -34,7 +34,7 @@ export const todayRangeManila = () => {
 };
 
 // 'YYYY-MM-DD' + n days (pure calendar math, no timezone involved).
-const addDays = (ymd, n) => {
+export const addDays = (ymd, n) => {
   const [y, m, d] = ymd.split('-').map(Number);
   return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
 };
@@ -82,6 +82,7 @@ const dayLabel = (ymd) =>
   });
 
 export const monthLabel = (ym) => {
+  if (!ym) return 'All dates';
   const r = splitDateRange(ym);
   if (r) return r.from === r.to ? dayLabel(r.from) : `${dayLabel(r.from)} – ${dayLabel(r.to)}`;
   return new Date(`${ym}-01T00:00:00+08:00`).toLocaleDateString('en-US', {
@@ -95,3 +96,27 @@ export const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
+
+// ---- Weekly reports: a week is Monday-Sunday, stored as a custom range ("YYYY-MM-DD_YYYY-MM-DD").
+// Monday-Sunday range of the week that contains the given date.
+export const weekRangeOf = (ymd) => {
+  const [y, m, d] = ymd.split('-').map(Number);
+  const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay(); // 0 = Sunday
+  const monday = addDays(ymd, -((dow + 6) % 7));
+  return makeDateRange(monday, addDays(monday, 6));
+};
+
+// This week (Manila time).
+export const thisWeekRangeManila = () => weekRangeOf(todayManilaDate());
+
+// Move a week range forward/backward: shiftWeek('2026-11-09_2026-11-15', 1) -> '2026-11-16_2026-11-22'
+export const shiftWeek = (range, delta) => {
+  const r = splitDateRange(range);
+  return makeDateRange(addDays(r.from, delta * 7), addDays(r.to, delta * 7));
+};
+
+// Short Manila date for an ISO instant: "Nov 17, 2026". Empty value -> "—".
+export const shortDateManila = (iso) =>
+  iso
+    ? new Date(iso).toLocaleDateString('en-US', { timeZone: APP_TIMEZONE, month: 'short', day: 'numeric', year: 'numeric' })
+    : '—';

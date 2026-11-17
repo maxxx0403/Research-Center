@@ -5,16 +5,21 @@ import { supabase } from '@/integrations/supabase/client';
 import { sendReservationEmail } from '@/lib/reservationEmail';
 import { useAuth } from '@/contexts/AuthContext';
 import BookingDateTimeInput from '@/components/BookingDateTimeInput';
-import FormSelect from '@/components/FormSelect';
-import { getStakeholderConfig, isCvsuEmail } from '@/lib/stakeholder';
+import FormSelect, { SectionListInput } from '@/components/FormSelect';
+import { getStakeholderConfig, isCvsuEmail, accountUnitCollege } from '@/lib/stakeholder';
 import { CVSU_COLLEGES } from '@/lib/cvsuColleges';
+import { isOutOfService, equipmentStatusLabel } from '@/lib/equipmentAvailability';
 import {
-  checkLabReservationConflict,
+  getLabSlotStatus,
+  suggestLabSchedules,
+  groupFits,
   checkEquipmentAvailability,
 } from '@/lib/reservationUtils';
-import { validateReservationFields, sanitizeText } from '@/lib/validation';
+import { validateReservationFields, sanitizeText, parseClassList, sectionMemberEntries } from '@/lib/validation';
 import { earliestBookableInput, earliestBookableLabel, manilaInputToISO, validateBookingDateTime, spansNonOfficialDay, MIN_ADVANCE_DAYS } from '@/lib/timezone';
 import PendingReservationDateNotice from '@/components/PendingReservationDateNotice';
+import DailySchedule from '@/components/DailySchedule';
+import { emptySchedule, buildSlots, validateSlots, describeSlots, isRangeTooLong, isNonOfficialDate, labelDate, MAX_BOOKING_DAYS } from '@/lib/dailySchedule';
 import {
   fetchPendingReservationCounts,
   getFullPendingReservationDate,
@@ -30,10 +35,20 @@ const validateDateTime = (start, end, allowNonOfficial = false) => validateBooki
 const inputClass =
   'w-full px-4 py-3 border-2 border-border rounded-xl text-base bg-card text-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10';
 
+// "LAB 302 - Biological Laboratory": lab code first, then the full name.
+const labDisplay = (lab) => {
+  if (!lab?.lab_name && !lab?.lab_code) return '';
+  return [lab.lab_code, lab.lab_name].filter(Boolean).join(' - ');
+};
+
 const UserReserve = () => {
   const { user } = useAuth();
   const [searchParams] = useSearchParams();
   const preLabId = Number(searchParams.get('lab_id') || 0);
+  // ?date=YYYY-MM-DD&start=HH:mm&end=HH:mm (e.g. from an alternative schedule)
+  const preDate = /^\d{4}-\d{2}-\d{2}$/.test(searchParams.get('date') || '') ? searchParams.get('date') : '';
+  const preStart = /^\d{2}:\d{2}$/.test(searchParams.get('start') || '') ? searchParams.get('start') : '';
+  const preEnd = /^\d{2}:\d{2}$/.test(searchParams.get('end') || '') ? searchParams.get('end') : '';
 
   const [labs, setLabs] = useState([]);
   const [equipment, setEquipment] = useState([]);
@@ -41,22 +56,43 @@ const UserReserve = () => {
   const [tempId] = useState(() => `RC-TMP-${Math.floor(100000 + Math.random() * 900000)}`);
 
   const [selectedLabs, setSelectedLabs] = useState([
-    { labId: preLabId || 0, startDatetime: '', endDatetime: '' },
+    preDate
+      ? { labId: preLabId || 0, ...emptySchedule(), startDate: preDate, endDate: preDate, dayTimes: { [preDate]: { start: preStart, end: preEnd } } }
+      : { labId: preLabId || 0, ...emptySchedule() },
   ]);
+  // Other groups that requested the same lab and time (shown after submitting)
+  const [competingNote, setCompetingNote] = useState('');
+  const [submittedCount, setSubmittedCount] = useState(0);
   const [selectedEquipments, setSelectedEquipments] = useState([]);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [reservationId, setReservationId] = useState(0);
   const [stakeholderChoice, setStakeholderChoice] = useState('');
-  const { options: stakeholderOptions, autoValue: autoStakeholder } = getStakeholderConfig(user?.email);
+  const { options: stakeholderOptions, autoValue: autoStakeholder } = getStakeholderConfig(user?.email, user?.user_metadata?.stakeholder_type);
   // Non-CvSU emails (e.g. gmail.com) are auto-set; CvSU emails choose Student / Faculty.
   const stakeholderType = autoStakeholder || stakeholderChoice;
+  // Instructors list the sections that come with them instead of an adviser.
+  const isInstructor = stakeholderType === 'faculty_staff';
   // CvSU stakeholders (Student / Faculty-Staff) pick their college from a list;
   // outsiders type their own agency.
   const isCvsuStakeholder = stakeholderType ? stakeholderType !== 'non_cvsu' : isCvsuEmail(user?.email);
   const [unitCollege, setUnitCollege] = useState('');
+  // College / school saved on the account at registration: filled in and locked.
+  const lockedUnitCollege = accountUnitCollege(user, isCvsuStakeholder, CVSU_COLLEGES);
+  useEffect(() => {
+    if (lockedUnitCollege) setUnitCollege(lockedUnitCollege);
+  }, [lockedUnitCollege]);
   const [members, setMembers] = useState([{ name: '', studentNumber: '' }]);
+  // Whole sections submitted as a class list instead of one member at a time: [{ name, text }]
+  const [sections, setSections] = useState([]);
+  // Who is coming (CvSU only): 'group' = members added one by one, 'section' = whole section(s) as a class list
+  const [memberMode, setMemberMode] = useState('group');
+  const isSection = isCvsuStakeholder && memberMode === 'section';
+  const chooseMemberMode = (mode) => {
+    setMemberMode(mode);
+    if (mode === 'section' && !sections.length) setSections([{ name: '', text: '' }]);
+  };
 
   useEffect(() => {
     Promise.all([
@@ -64,7 +100,7 @@ const UserReserve = () => {
       supabase
         .from('equipment')
         .select('*, laboratories(lab_name, lab_code)')
-        .in('status', ['available', 'maintenance'])
+        .in('status', ['available', 'under_repair', 'maintenance'])
         .order('name'),
     ]).then(([labRes, eqRes]) => {
       setLabs(labRes.data || []);
@@ -79,11 +115,15 @@ const UserReserve = () => {
   };
 
   const addLab = () => {
-    setSelectedLabs([...selectedLabs, { labId: 0, startDatetime: '', endDatetime: '' }]);
+    setSelectedLabs([...selectedLabs, { labId: 0, ...emptySchedule() }]);
   };
 
   const removeLab = (idx) => {
-    setSelectedLabs(selectedLabs.filter((_, i) => i !== idx));
+    const remaining = selectedLabs.filter((_, i) => i !== idx);
+    setSelectedLabs(remaining);
+    // Equipment that pointed at a row that no longer exists falls back to the first one.
+    const validCount = remaining.filter((l) => l.labId > 0).length;
+    setSelectedEquipments((prev) => prev.map((e) => (e.labIdx >= validCount ? { ...e, labIdx: 0 } : e)));
   };
 
   const updateLabField = (idx, field, value) => {
@@ -91,6 +131,25 @@ const UserReserve = () => {
     updated[idx] = { ...updated[idx], [field]: value };
     setSelectedLabs(updated);
   };
+
+  // Start / end DATE of a lab entry (the time is set per date below).
+  const updateLabDate = (idx, field, value) => {
+    const updated = [...selectedLabs];
+    const next = { ...updated[idx], [field]: value };
+    if (next.startDate && next.endDate && next.endDate < next.startDate) next.endDate = '';
+    updated[idx] = next;
+    setSelectedLabs(updated);
+  };
+
+  const updateLabDayTimes = (idx, { dayTimes, skipped }) => {
+    const updated = [...selectedLabs];
+    updated[idx] = { ...updated[idx], dayTimes, skipped };
+    setSelectedLabs(updated);
+  };
+
+  const labAllowsNonOfficial = (labId) => !!labs.find((l) => l.id === labId)?.allow_non_official_hours;
+  // The dates that will really be booked for a lab entry (one slot per date, each with its own times).
+  const slotsFor = (entry) => buildSlots(entry, { allowNonOfficial: labAllowsNonOfficial(entry.labId) });
 
   const addEquipment = (eqId) => {
     if (!selectedEquipments.find((e) => e.equipmentId === eqId)) {
@@ -146,8 +205,8 @@ const UserReserve = () => {
     setError('');
 
     const form = new FormData(e.currentTarget);
-    const adviserName = form.get('adviser_name');
-    const studentId = form.get('student_id');
+    const adviserName = isInstructor ? String(form.get('section_list') || '').trim() : form.get('adviser_name');
+    const studentId = user?.user_metadata?.student_id || form.get('student_id');
 
     if (!studentId || !studentId.toString().trim()) {
       triggerError('Please fill in the Student Number / ID Number field.');
@@ -159,7 +218,7 @@ const UserReserve = () => {
       return;
     }
 
-    if (!adviserName || !adviserName.toString().trim()) {
+    if (!isInstructor && (!adviserName || !adviserName.toString().trim())) {
       triggerError('Please fill in the Adviser / Supervisor / Project Leader field.');
       return;
     }
@@ -174,7 +233,12 @@ const UserReserve = () => {
       return;
     }
 
-    for (let i = 0; i < members.length; i++) {
+    if (isSection && !sections.length) {
+      triggerError('Please add your section list, or choose the Group tab.');
+      return;
+    }
+
+    for (let i = 0; i < (isSection ? 0 : members.length); i++) {
       const m = members[i];
       const hasName = m.name && m.name.trim();
       const hasSN = m.studentNumber && m.studentNumber.trim();
@@ -188,6 +252,17 @@ const UserReserve = () => {
       }
     }
 
+    for (const section of isSection ? sections : []) {
+      if (!section.name.trim()) {
+        triggerError('Please enter the Section name of the class list (e.g. BSIT 3-1).');
+        return;
+      }
+      if (!parseClassList(section.text).length) {
+        triggerError(`Please paste or upload the class list of Section ${section.name.trim()}.`);
+        return;
+      }
+    }
+
     if (!selectedLabs[0]?.labId || selectedLabs[0].labId === 0) {
       triggerError('Please select at least one laboratory/facility.');
       return;
@@ -197,15 +272,15 @@ const UserReserve = () => {
       if (!entry.labId || entry.labId === 0) continue;
       const lab = labs.find((l) => l.id === entry.labId);
       if (lab?.status === 'maintenance') {
-        triggerError(`"${lab.lab_name}" is currently under maintenance and cannot be reserved.`);
+        triggerError(`"${labDisplay(lab)}" is currently under maintenance and cannot be reserved.`);
         return;
       }
     }
 
     for (const eq of selectedEquipments) {
       const eqData = equipment.find((e) => e.id === eq.equipmentId);
-      if (eqData?.status === 'maintenance') {
-        triggerError(`"${eqData.name}" is currently under maintenance and cannot be reserved.`);
+      if (isOutOfService(eqData)) {
+        triggerError(`"${eqData.name}" is currently ${equipmentStatusLabel(eqData.status).toLowerCase()} and cannot be reserved.`);
         return;
       }
     }
@@ -214,30 +289,76 @@ const UserReserve = () => {
       const entry = selectedLabs[i];
       if (!entry.labId || entry.labId === 0) continue;
       const entryLab = labs.find((l) => l.id === entry.labId);
-      const labName = entryLab?.lab_name || `Lab #${i + 1}`;
-      const dtError = validateDateTime(entry.startDatetime, entry.endDatetime, !!entryLab?.allow_non_official_hours);
+      const labName = labDisplay(entryLab) || `Lab #${i + 1}`;
+      if (isRangeTooLong(entry)) {
+        triggerError(`${labName}: you can book at most ${MAX_BOOKING_DAYS} dates in one reservation.`);
+        return;
+      }
+      const dtError = validateSlots(slotsFor(entry));
       if (dtError) {
         triggerError(`${labName}: ${dtError}`);
         return;
       }
     }
 
-    const validLabs = selectedLabs.filter((e) => e.labId > 0);
+    // One slot per booked date, each with its own start and end time.
+    const validLabs = selectedLabs
+      .filter((e) => e.labId > 0)
+      .map((e) => ({ ...e, slots: slotsFor(e) }));
 
-    for (const entry of validLabs) {
-      const { hasConflict, conflicts } = await checkLabReservationConflict(
-        entry.labId,
-        entry.startDatetime,
-        entry.endDatetime
-      );
-      if (hasConflict) {
-        const labName = labs.find((l) => l.id === entry.labId)?.lab_name || `Lab #${entry.labId}`;
-        triggerError(
-          `Conflict detected for ${labName}! ${conflicts.length} existing reservation(s) overlap with your requested time.`
-        );
-        return;
+    // The same lab chosen in several rows: the same date must not overlap itself.
+    for (let a = 0; a < validLabs.length; a++) {
+      for (let b = a + 1; b < validLabs.length; b++) {
+        const x = validLabs[a];
+        const y = validLabs[b];
+        if (x.labId !== y.labId) continue;
+        for (const sx of x.slots) {
+          for (const sy of y.slots) {
+            if (sx.date === sy.date && sx.startDatetime < sy.endDatetime && sy.startDatetime < sx.endDatetime) {
+              const labName = labDisplay(labs.find((l) => l.id === x.labId)) || 'Laboratory';
+              triggerError(`${labName}: ${labelDate(sx.date)} is booked twice with overlapping times. Please fix the time.`);
+              return;
+            }
+          }
+        }
       }
     }
+
+    // Conflicts: groups can share a lab while the people fit in its capacity.
+    // Approved groups + this group over the capacity blocks the time (alternatives are suggested).
+    // Other PENDING requests do not block: the admin reviews them.
+    const people = 1 + (isSection
+      ? sectionMemberEntries(sections).length
+      : members.filter((m) => m.name && m.name.trim()).length);
+    let competing = 0;
+    for (const entry of validLabs) {
+      for (const slot of entry.slots) {
+        const labName = labDisplay(labs.find((l) => l.id === entry.labId)) || `Lab #${entry.labId}`;
+        let status;
+        try {
+          status = await getLabSlotStatus(entry.labId, slot.startDatetime, slot.endDatetime);
+        } catch (slotError) {
+          console.error('Error checking the laboratory schedule:', slotError);
+          triggerError('Could not check the laboratory schedule. Please try again.');
+          return;
+        }
+        if (!groupFits(status, people)) {
+          const alternatives = await suggestLabSchedules(entry.labId, slot.startDatetime, slot.endDatetime, 3, people).catch(() => []);
+          const seats = status.capacity
+            ? ` Only ${Math.max(0, status.capacity - status.approvedPeople)} of ${status.capacity} seats are left and your group has ${people}.`
+            : ' Another group is already approved at that time.';
+          triggerError(
+            `${labName} is full on ${labelDate(slot.date)} at that time.${seats}`
+            + (alternatives.length ? ` Available: ${alternatives.map((a) => a.text).join('; ')}.` : ' Please choose another date or time.')
+          );
+          return;
+        }
+        competing = Math.max(competing, status.pending);
+      }
+    }
+    setCompetingNote(competing > 0
+      ? `${competing} other request${competing === 1 ? '' : 's'} for the same laboratory and time ${competing === 1 ? 'is' : 'are'} also waiting for review. Groups can share the laboratory while everyone fits in its capacity; if it becomes full before yours is approved, you will be notified with other available schedules.`
+      : '');
 
     for (const eq of selectedEquipments) {
       const eqData = equipment.find((e) => e.id === eq.equipmentId);
@@ -247,25 +368,34 @@ const UserReserve = () => {
         triggerError(`Please select which lab will use "${eqName}".`);
         return;
       }
-      if (!eqData?.allow_non_official_hours && spansNonOfficialDay(assignedLab.startDatetime, assignedLab.endDatetime)) {
+      // Equipment fixed to a lab is used on every entry of that lab; other equipment follows the row chosen.
+      const targetEntries = eqData?.laboratory_id
+        ? validLabs.filter((l) => l.labId === eqData.laboratory_id)
+        : [assignedLab];
+      const targets = targetEntries.length ? targetEntries : [assignedLab];
+      if (!eqData?.allow_non_official_hours && targets.some((t) => t.slots.some((slot) => isNonOfficialDate(slot.date)))) {
         triggerError(`"${eqName}" is not available on Fridays to Sundays (non-official hours). Please choose another equipment or a Monday to Thursday schedule.`);
         return;
       }
-      const { hasConflict: eqConflict } = await checkEquipmentAvailability(
-        [eq],
-        assignedLab.startDatetime,
-        assignedLab.endDatetime
-      );
-      if (eqConflict) {
-        triggerError(`"${eqName}" is not available during the selected lab schedule. Please choose a different equipment or time.`);
-        return;
+      for (const target of targets) {
+        for (const slot of target.slots) {
+          const { hasConflict: eqConflict } = await checkEquipmentAvailability(
+            [eq],
+            slot.startDatetime,
+            slot.endDatetime
+          );
+          if (eqConflict) {
+            triggerError(`"${eqName}" is not available on ${labelDate(slot.date)} during the selected lab schedule. Please choose a different equipment or time.`);
+            return;
+          }
+        }
       }
     }
 
     let pendingCounts;
     try {
       pendingCounts = await fetchPendingReservationCounts(
-        validLabs.map((entry) => entry.startDatetime.slice(0, 10))
+        [...new Set(validLabs.flatMap((entry) => entry.slots.map((slot) => slot.date)))]
       );
     } catch (countError) {
       console.error('Error checking pending reservation limit:', countError);
@@ -280,9 +410,10 @@ const UserReserve = () => {
     }
 
     const rawFields = {
-      researcher_name: form.get('researcher_name'),
+      // Name always comes from the account (the field on screen is locked).
+      researcher_name: user?.user_metadata?.full_name || user?.email?.split('@')[0] || '',
       email: form.get('email') || '',
-      phone: form.get('phone') || '',
+      phone: user?.user_metadata?.phone || form.get('phone') || '',
       study_title: form.get('study_title') || '',
       research_purpose: form.get('purpose'),
     };
@@ -299,29 +430,38 @@ const UserReserve = () => {
       phone: rawFields.phone ? Number(rawFields.phone.replace(/\D/g, '')) : null,
       stakeholder_type: stakeholderType,
       unit_college: sanitizeText(unitCollege, { maxLength: 150 }),
-      adviser_name: sanitizeText(adviserName, { maxLength: 150 }),
+      adviser_name: sanitizeText(adviserName, { maxLength: isInstructor ? 200 : 150 }),
       study_title: sanitizeText(rawFields.study_title, { maxLength: 300 }),
       special_requirements: sanitizeText(form.get('special_requirements'), { maxLength: 500 }),
       research_purpose: sanitizeText(rawFields.research_purpose, { maxLength: 1000 }),
-      members_list: members
+      members_list: (isSection ? [] : members)
         .filter((m) => m.name && m.name.trim())
-        .map((m) => `${sanitizeText(m.name, { maxLength: 150 })} — Student No. ${sanitizeText(m.studentNumber, { maxLength: 50 })}`),
+        .map((m) => `${sanitizeText(m.name, { maxLength: 150 })} — Student No. ${sanitizeText(m.studentNumber, { maxLength: 50 })}`)
+        .concat(isSection ? sectionMemberEntries(sections) : []),
       status: 'pending',
     };
 
-    // When the request covers more than one laboratory, tag every row with
-    // the same batch_id so the whole submission is treated as a single
-    // reservation (one reference/one row) across the admin, staff, and
-    // "My Reservations" views instead of showing up as N separate entries.
-    const batchId = validLabs.length > 1 && crypto?.randomUUID ? crypto.randomUUID() : null;
+    // When the request covers more than one laboratory OR more than one date, tag
+    // every row with the same batch_id so the whole submission is treated as a
+    // single reservation (one reference) across the admin, staff, and
+    // "My Reservations" views. Each date is its own row with its own times.
+    const totalRows = validLabs.reduce((n, entry) => n + entry.slots.length, 0);
+    const batchId = totalRows > 1 && crypto?.randomUUID ? crypto.randomUUID() : null;
 
-    const labRows = validLabs.map((entry) => ({
-      ...commonFields,
-      laboratory_id: entry.labId,
-      start_datetime: manilaInputToISO(entry.startDatetime),
-      end_datetime: manilaInputToISO(entry.endDatetime),
-      batch_id: batchId,
-    }));
+    const labRows = [];
+    const rowLabIdx = []; // which lab entry each row belongs to (same order as labRows)
+    validLabs.forEach((entry, labIdx) => {
+      entry.slots.forEach((slot) => {
+        labRows.push({
+          ...commonFields,
+          laboratory_id: entry.labId,
+          start_datetime: manilaInputToISO(slot.startDatetime),
+          end_datetime: manilaInputToISO(slot.endDatetime),
+          batch_id: batchId,
+        });
+        rowLabIdx.push(labIdx);
+      });
+    });
 
     const { data: insertedLabs, error: labInsertErr } = await supabase
       .from('reservations')
@@ -337,24 +477,33 @@ const UserReserve = () => {
       return;
     }
 
-    const labReservationIds = {};
-    insertedLabs.forEach((row, i) => {
-      labReservationIds[i] = row.id;
-    });
     // The batch's reference ID is its lowest row ID, matching the
     // convention already used for equipment batches.
     const lastId = Math.min(...insertedLabs.map((r) => r.id));
 
     for (const eq of selectedEquipments) {
-      const labIdx = eq.labIdx ?? 0;
-      const reservationId = labReservationIds[labIdx] ?? labReservationIds[0];
-      if (!reservationId) continue;
-
-      const { error: eqResErr } = await supabase.from('reservation_equipment').insert({
-        reservation_id: reservationId,
-        equipment_id: eq.equipmentId,
-        quantity_reserved: eq.quantity,
+      const eqData = equipment.find((e) => e.id === eq.equipmentId);
+      // Equipment fixed to a lab is used on every entry (and date) of that lab; other
+      // equipment follows the row the user chose, on each of that row's dates.
+      const targetIdxs = eqData?.laboratory_id
+        ? validLabs.map((l, i) => (l.labId === eqData.laboratory_id ? i : -1)).filter((i) => i !== -1)
+        : [eq.labIdx ?? 0];
+      const reservationIds = [];
+      (targetIdxs.length ? targetIdxs : [0]).forEach((i) => {
+        const entryIdx = validLabs[i] ? i : 0;
+        rowLabIdx.forEach((labIdx, rowIdx) => {
+          if (labIdx === entryIdx && insertedLabs[rowIdx]) reservationIds.push(insertedLabs[rowIdx].id);
+        });
       });
+      if (!reservationIds.length) continue;
+
+      const { error: eqResErr } = await supabase.from('reservation_equipment').insert(
+        reservationIds.map((rid) => ({
+          reservation_id: rid,
+          equipment_id: eq.equipmentId,
+          quantity_reserved: eq.quantity,
+        }))
+      );
 
       if (eqResErr) {
         triggerError('Reservation saved but failed to link equipment: ' + eqResErr.message);
@@ -365,6 +514,7 @@ const UserReserve = () => {
     sendReservationEmail({ event: 'new', reservationType: 'lab', ids: insertedLabs.map((r) => r.id) });
 
     setReservationId(lastId);
+    setSubmittedCount(insertedLabs.length);
     setSuccess(true);
     setLoading(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -406,15 +556,19 @@ const UserReserve = () => {
     setSuccess(false);
     setReservationId(0);
     setSelectedEquipments([]);
-    setSelectedLabs([{ labId: 0, startDatetime: '', endDatetime: '' }]);
+    setSelectedLabs([{ labId: 0, ...emptySchedule() }]);
+    setSubmittedCount(0);
+    setCompetingNote('');
     setStakeholderChoice('');
-    setUnitCollege('');
+    setUnitCollege(lockedUnitCollege);
     setMembers([{ name: '' }]);
+    setSections([]);
+    setMemberMode('group');
     setError('');
   };
 
   if (success) {
-    const labCount = selectedLabs.filter((e) => e.labId > 0).length;
+    const labCount = submittedCount;
     return (
       <div className="max-w-[560px] mx-auto">
         <button
@@ -434,9 +588,14 @@ const UserReserve = () => {
           <p className="text-xs text-muted-foreground mb-1">
             Reference: <strong>#RC{String(reservationId).padStart(5, '0')}</strong>
           </p>
+          {competingNote && (
+            <p className="text-xs text-warning font-semibold bg-warning/10 border border-warning/25 rounded-lg px-3 py-2 my-3 max-w-[420px] mx-auto">
+              {competingNote}
+            </p>
+          )}
           {labCount > 1 && (
             <p className="text-xs text-muted-foreground mb-8">
-              {labCount} laboratory reservations were submitted.
+              {labCount} reservation entries (one per lab and date) were submitted under this reference.
             </p>
           )}
           <div className={`flex gap-4 justify-center flex-wrap ${labCount > 1 ? '' : 'mt-8'}`}>
@@ -501,7 +660,10 @@ const UserReserve = () => {
                 placeholder="e.g. Juan Dela Cruz"
                 value={user?.user_metadata?.full_name || user?.email?.split('@')[0] || ''}
                 readOnly
-                className={`${inputClass} bg-muted/50 cursor-not-allowed`}
+                tabIndex={-1}
+                aria-readonly="true"
+                title="Taken from your account. It cannot be changed here."
+                className={`${inputClass} bg-muted/50 cursor-not-allowed select-none pointer-events-none`}
               />
             </div>
             <div>
@@ -510,12 +672,17 @@ const UserReserve = () => {
               </label>
               <input
                 name="student_id"
+                key={`sid-${user?.id || ''}`}
+                defaultValue={user?.user_metadata?.student_id || ''}
+                readOnly={!!user?.user_metadata?.student_id}
+                tabIndex={user?.user_metadata?.student_id ? -1 : undefined}
+                title={user?.user_metadata?.student_id ? 'Taken from your account. It cannot be changed here.' : undefined}
                 required
                 inputMode="numeric"
                 pattern="[0-9]*"
                 onInput={(e) => { e.target.value = e.target.value.replace(/\D/g, ''); }}
                 placeholder="e.g. 202302603"
-                className={inputClass}
+                className={`${inputClass} ${user?.user_metadata?.student_id ? 'bg-muted/50 cursor-not-allowed select-none pointer-events-none' : ''}`}
               />
             </div>
             <div>
@@ -524,6 +691,11 @@ const UserReserve = () => {
               </label>
               <input
                 name="phone"
+                key={`phone-${user?.id || ''}`}
+                defaultValue={user?.user_metadata?.phone || ''}
+                readOnly={!!user?.user_metadata?.phone}
+                tabIndex={user?.user_metadata?.phone ? -1 : undefined}
+                title={user?.user_metadata?.phone ? 'Taken from your account. It cannot be changed here.' : undefined}
                 type="tel"
                 inputMode="numeric"
                 maxLength={11}
@@ -531,7 +703,7 @@ const UserReserve = () => {
                 onInput={(e) => { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 11); }}
                 placeholder="e.g. 09171234567"
                 required
-                className={inputClass}
+                className={`${inputClass} ${user?.user_metadata?.phone ? 'bg-muted/50 cursor-not-allowed select-none pointer-events-none' : ''}`}
               />
             </div>
             <div>
@@ -592,7 +764,16 @@ const UserReserve = () => {
               <label className="block mb-1.5 font-semibold text-sm text-foreground">
                 Unit / College / Agency <span className="text-destructive">*</span>
               </label>
-              {isCvsuStakeholder ? (
+              {lockedUnitCollege ? (
+                <input
+                  name="unit_college"
+                  value={lockedUnitCollege}
+                  readOnly
+                  tabIndex={-1}
+                  title="Taken from your account. It cannot be changed here."
+                  className={`${inputClass} bg-muted/50 cursor-not-allowed select-none pointer-events-none`}
+                />
+              ) : isCvsuStakeholder ? (
                 <FormSelect
                   value={unitCollege}
                   onChange={setUnitCollege}
@@ -611,12 +792,24 @@ const UserReserve = () => {
                 />
               )}
             </div>
-            <div className="md:col-span-2">
-              <label className="block mb-1.5 font-semibold text-sm text-foreground">
-                Adviser / Supervisor / Project Leader <span className="text-destructive">*</span>
-              </label>
-              <input name="adviser_name" required placeholder="e.g. Dr. Maria Santos" className={inputClass} />
-            </div>
+            {isInstructor ? (
+              <div className="md:col-span-2">
+                <label className="block mb-1.5 font-semibold text-sm text-foreground">
+                  List of Section(s) <span className="text-xs font-normal text-muted-foreground ml-1">(optional)</span>
+                </label>
+                <input name="section_list" maxLength={200} placeholder="e.g. BSIT 3-1, BSIT 3-2" className={inputClass} />
+                <p className="text-xs text-muted-foreground mt-1.5">
+                  Sections who will come with you. Leave blank if none. If a whole section is coming, you don't need to list each student below.
+                </p>
+              </div>
+            ) : (
+              <div className="md:col-span-2">
+                <label className="block mb-1.5 font-semibold text-sm text-foreground">
+                  Adviser / Supervisor / Project Leader <span className="text-destructive">*</span>
+                </label>
+                <input name="adviser_name" required placeholder="e.g. Dr. Maria Santos" className={inputClass} />
+              </div>
+            )}
           </div>
         </div>
 
@@ -638,16 +831,55 @@ const UserReserve = () => {
               <label className="font-semibold text-sm text-foreground flex items-center gap-1.5">
                 <Users className="w-4 h-4 text-primary" />
                 List of Members / Users
-                <span className="text-xs font-normal text-muted-foreground normal-case ml-1">(those who will use the laboratory)</span>
+                <span className="text-xs font-normal text-muted-foreground normal-case ml-1">(those who will use the laboratory{isInstructor ? '; optional if a whole section is coming' : ''})</span>
               </label>
-              <button
-                type="button"
-                onClick={addMember}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border-2 border-primary/30 text-primary text-xs font-semibold hover:border-primary hover:bg-primary/5 transition-all cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" /> Add Member
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                {!isSection && (
+                <button
+                  type="button"
+                  onClick={addMember}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border-2 border-primary/30 text-primary text-xs font-semibold hover:border-primary hover:bg-primary/5 transition-all cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Add Member
+                </button>
+                )}
+                {isSection && (
+                  <button
+                    type="button"
+                    onClick={() => setSections([...sections, { name: '', text: '' }])}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border-2 border-primary/30 text-primary text-xs font-semibold hover:border-primary hover:bg-primary/5 transition-all cursor-pointer"
+                  >
+                    <Users className="w-3.5 h-3.5" /> Add Another Section
+                  </button>
+                )}
+              </div>
             </div>
+            {isCvsuStakeholder && (
+              <div role="tablist" aria-label="Who will use the laboratory" className="inline-flex p-1 mb-3 rounded-xl bg-muted/60 border border-border">
+                {[
+                  { value: 'group', label: 'Group', hint: 'Add members' },
+                  { value: 'section', label: 'Section', hint: 'Class list' },
+                ].map((tab) => (
+                  <button
+                    key={tab.value}
+                    type="button"
+                    role="tab"
+                    aria-selected={memberMode === tab.value}
+                    onClick={() => chooseMemberMode(tab.value)}
+                    className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
+                      memberMode === tab.value
+                        ? 'bg-primary text-primary-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    {tab.label}
+                    <span className={`ml-1.5 text-[11px] font-normal ${memberMode === tab.value ? 'text-primary-foreground/80' : 'text-muted-foreground'}`}>· {tab.hint}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {!isSection && (
+            <>
             <div className="hidden md:block rounded-xl border-2 !border-[color:var(--field-border)] overflow-hidden overflow-x-auto">
               <table className="w-full text-sm min-w-[480px]">
                 <thead>
@@ -733,6 +965,23 @@ const UserReserve = () => {
                 </div>
               ))}
             </div>
+            {isCvsuStakeholder && (
+              <p className="text-[11px] text-muted-foreground mt-2">
+                Coming as a whole section? Choose the <strong>Section</strong> tab to paste or upload your class list instead of adding each member.
+              </p>
+            )}
+            </>
+            )}
+            {isSection && (
+              <>
+                <SectionListInput sections={sections} onChange={setSections} />
+                {!sections.length && (
+                  <p className="text-xs text-muted-foreground rounded-xl border-2 border-dashed !border-[color:var(--field-border)] px-4 py-3">
+                    Click <strong className="text-foreground">Add Another Section</strong> to add your class list.
+                  </p>
+                )}
+              </>
+            )}
           </div>
 
           <div className="space-y-4">
@@ -742,6 +991,7 @@ const UserReserve = () => {
                 Laboratory / Facility Requested
                 <span className="text-destructive">*</span>
               </label>
+              <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={addLab}
@@ -749,11 +999,13 @@ const UserReserve = () => {
               >
                 <Plus className="w-3.5 h-3.5" /> Add Laboratory
               </button>
+              </div>
             </div>
 
             {selectedLabs.map((entry, idx) => {
               const lab = labs.find((l) => l.id === entry.labId);
               const isFirst = idx === 0;
+              const rowLabel = isFirst ? 'Primary' : `Lab #${idx + 1}`;
               return (
                 <div
                   key={idx}
@@ -771,7 +1023,7 @@ const UserReserve = () => {
                           : 'text-muted-foreground bg-muted')
                       }
                     >
-                      {isFirst ? 'Primary' : `Lab #${idx + 1}`}
+                      {rowLabel}
                     </span>
                     <FormSelect
                       searchable
@@ -782,16 +1034,16 @@ const UserReserve = () => {
                       className={inputClass}
                       options={labs.map((l) => ({
                         value: l.id,
-                        label: `${l.lab_name} (${l.lab_code})${l.status === 'maintenance' ? ' — Under Maintenance' : !l.allow_non_official_hours ? ' — Mon–Thu only' : ''}`,
-                        disabled:
-                          selectedLabs.some((s, si) => si !== idx && s.labId === l.id) ||
-                          l.status === 'maintenance',
+                        label: `${labDisplay(l)}${l.status === 'maintenance' ? ' — Under Maintenance' : !l.allow_non_official_hours ? ' — Mon–Thu only' : ''}`,
+                        // The same lab can be picked again: each row is its own day/time.
+                        disabled: l.status === 'maintenance',
                       }))}
                     />
-                    {!isFirst && (
+                    {selectedLabs.length > 1 && (
                       <button
                         type="button"
                         onClick={() => removeLab(idx)}
+                        title="Remove this laboratory"
                         className="p-2.5 hover:bg-destructive/10 text-destructive rounded-xl transition-colors border border-destructive/20 cursor-pointer flex-shrink-0"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -804,7 +1056,7 @@ const UserReserve = () => {
                       <Info className={`w-5 h-5 flex-shrink-0 mt-0.5 ${lab.status === 'maintenance' ? 'text-destructive' : 'text-primary'}`} />
                       <div>
                         <p className={`font-semibold mb-1 ${lab.status === 'maintenance' ? 'text-destructive' : 'text-primary'}`}>
-                          {lab.lab_name}
+                          {labDisplay(lab)}
                           {lab.status === 'maintenance' && (
                             <span className="ml-2 text-xs font-bold bg-destructive/15 text-destructive px-2 py-0.5 rounded-full">Under Maintenance</span>
                           )}
@@ -845,24 +1097,32 @@ const UserReserve = () => {
                     <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                       <div>
                         <label className="block mb-1.5 font-semibold text-xs text-muted-foreground">
-                          Start Date & Time
+                          Start Date
                         </label>
-                        <BookingDateTimeInput value={entry.startDatetime} onChange={(v) => updateLabField(idx, 'startDatetime', v)} min={getMinDatetimeLocal()}
+                        <BookingDateTimeInput dateOnly value={entry.startDate ? `${entry.startDate}T00:00` : ''} onChange={(v) => updateLabDate(idx, 'startDate', v.slice(0, 10))} min={getMinDatetimeLocal()}
                           required
                           className={inputClass}
                         />
-                        <PendingReservationDateNotice date={entry.startDatetime.slice(0, 10)} />
                       </div>
                       <div>
                         <label className="block mb-1.5 font-semibold text-xs text-muted-foreground">
-                          End Date & Time
+                          End Date <span className="font-normal">(only if booking more than one day)</span>
                         </label>
-                        <BookingDateTimeInput value={entry.endDatetime} onChange={(v) => updateLabField(idx, 'endDatetime', v)} min={entry.startDatetime || getMinDatetimeLocal()}
-                          required
+                        <BookingDateTimeInput dateOnly value={entry.endDate ? `${entry.endDate}T00:00` : ''} onChange={(v) => updateLabDate(idx, 'endDate', v.slice(0, 10))} min={entry.startDate ? `${entry.startDate}T00:00` : getMinDatetimeLocal()}
                           className={inputClass}
                         />
                       </div>
                     </div>
+                    <DailySchedule
+                      startDate={entry.startDate}
+                      endDate={entry.endDate}
+                      dayTimes={entry.dayTimes}
+                      skipped={entry.skipped}
+                      allowNonOfficial={labAllowsNonOfficial(entry.labId)}
+                      unavailableNote="Friday to Sunday are non-official hours; this laboratory is not accepting reservations on those days."
+                      onChange={(v) => updateLabDayTimes(idx, v)}
+                      selectClass={inputClass}
+                    />
                   </div>
                 </div>
               );
@@ -899,8 +1159,8 @@ const UserReserve = () => {
                   .filter((eq) => !selectedEquipments.find((se) => se.equipmentId === eq.id))
                   .map((eq) => ({
                     value: eq.id,
-                    label: `${eq.name} — ${eq.laboratories?.lab_name || 'Any lab'}${eq.status === 'maintenance' ? ' (Under Maintenance)' : ''}`,
-                    disabled: eq.status === 'maintenance',
+                    label: `${eq.name} — ${labDisplay(eq.laboratories) || 'Any lab'}${isOutOfService(eq) ? ` (${equipmentStatusLabel(eq.status)})` : ''}`,
+                    disabled: isOutOfService(eq),
                   }))}
               />
             )}
@@ -922,7 +1182,7 @@ const UserReserve = () => {
                           <div className="flex-1 min-w-0">
                             <p className="font-semibold text-sm text-foreground">{eqData?.name}</p>
                             <p className="text-xs text-muted-foreground">
-                              {eqData?.brand} {eqData?.model} · {eqData?.laboratories?.lab_name}
+                              {eqData?.brand} {eqData?.model} · {labDisplay(eqData?.laboratories)}
                             </p>
                           </div>
                           <div className="flex items-center justify-between sm:justify-end gap-2 sm:flex-shrink-0">
@@ -954,8 +1214,8 @@ const UserReserve = () => {
                           </label>
                           {eqData?.laboratory_id ? (
                             <div className="w-full px-3 py-2 border-2 border-[color:var(--field-border)] rounded-xl text-sm bg-white/55 text-foreground">
-                              {eqData.laboratories?.lab_name || `Lab #${eqData.laboratory_id}`}
-                              <span className="text-xs text-muted-foreground"> (fixed — this equipment belongs to this lab)</span>
+                              {labDisplay(eqData.laboratories) || `Lab #${eqData.laboratory_id}`}
+                              <span className="text-xs text-muted-foreground"> (fixed — this equipment belongs to this lab{validLabs.filter((l) => l.labId === eqData.laboratory_id).length > 1 ? ' and is included on every day of it' : ''})</span>
                             </div>
                           ) : (
                             <FormSelect
@@ -966,10 +1226,9 @@ const UserReserve = () => {
                               className="w-full px-3 py-2 border-2 border-border rounded-xl text-sm bg-card text-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10"
                               options={validLabs.map((entry, idx) => {
                                 const lab = labs.find((l) => l.id === entry.labId);
-                                const when = entry.startDatetime
-                                  ? ` — ${new Date(manilaInputToISO(entry.startDatetime)).toLocaleDateString('en-US', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric' })} ${new Date(manilaInputToISO(entry.startDatetime)).toLocaleTimeString('en-US', { timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit' })}`
-                                  : '';
-                                return { value: idx, label: `${lab?.lab_name || `Lab #${idx + 1}`}${when}` };
+                                const desc = describeSlots(slotsFor(entry));
+                                const when = desc ? ` — ${desc}` : '';
+                                return { value: idx, label: `${labDisplay(lab) || `Lab #${idx + 1}`}${when}` };
                               })}
                             />
                           )}
@@ -979,7 +1238,7 @@ const UserReserve = () => {
                             return (
                               <p className="text-xs text-muted-foreground mt-1.5 flex items-center gap-1">
                                 <Clock className="w-3 h-3" />
-                                Schedule will follow: {assignedLab.startDatetime ? `${new Date(manilaInputToISO(assignedLab.startDatetime)).toLocaleString('en-US', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} – ${new Date(manilaInputToISO(assignedLab.endDatetime)).toLocaleTimeString('en-US', { timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit' })}` : 'set the lab schedule above'}
+                                Schedule will follow: {describeSlots(slotsFor(assignedLab)) || 'set the lab schedule above'}
                               </p>
                             );
                           })()}

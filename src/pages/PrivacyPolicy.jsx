@@ -1,5 +1,6 @@
+import { useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ShieldCheck, ArrowLeft } from 'lucide-react';
+import { ShieldCheck, ArrowLeft, X } from 'lucide-react';
 import { acceptPrivacy, hasAcceptedPrivacy } from '@/lib/privacyConsent';
 
 // ── Fill these in with the Research Center's real details ─────────────────────
@@ -202,6 +203,106 @@ const PrivacyPolicy = () => {
               </button>
             )}
           </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// Facility / Equipment Use Terms and Conditions (printed at the back of
+// UREC-QF-28). Shown as a pop-up for reading only: on the landing page and
+// in the user account (sidebar, under Help & Support).
+// ---------------------------------------------------------------------------
+const FACILITY_TERMS = [
+  'Research laboratories and facilities will be open Mondays–Thursdays from 7:00 AM – 6:00 PM where the stakeholders are required to sign in and out in a provided logbook by the Research Center at each respective laboratory/facility requested;',
+  'Any work rendered outside of the university official hours shall be approved first by the Director of the Research Center by submitting a formal request using the UREC-QF-32 (Request to Use Facility/Equipment Outside Official Hours). A copy of the approved request should also be furnished to the Guard-on-Duty and/or the Security Officer of the Research Center to notify about their use outside of the university official hours;',
+  'The stakeholders shall be accompanied by their supervisor/adviser throughout the conduct of the study, unless permitted by the Laboratory Head and/or Technical Services Division of the Research Center;',
+  'The work area of the stakeholder and the scope of work will be limited only to the protocol/methodology submitted prior to the approval of their request;',
+  'The stakeholder shall always abide by the general laboratory guidelines, biosafety and biosecurity rules, and internal policies and protocols of the laboratory/facility they will be working on;',
+  'The stakeholder shall be responsible in preparing and procurement of materials, reagents, and other consumables that may be required in the conduct of the study;',
+  'The stakeholder shall be responsible of any repair of equipment due to improper use and carelessness. This also includes replacement of any glassware and materials broken throughout the duration of use with the same specification and brand;',
+  'The stakeholder shall always maintain the cleanliness of their work area during and after the conduct of experiments. It shall be their responsibility to clean all glassware and materials after every use;',
+  'The stakeholder shall acknowledge the Research Center, its faculty researcher/s and/or employee/s, and its facilities and laboratories, on all of the research publications and presentations stemming from the results of the experiment/study conducted at the center; and',
+  'Results of the experiments done should be furnished to the Research Center for the purpose of development of further research or new/improved technologies and protocols.',
+];
+
+const RISKS = [
+  'exposure to hazardous materials, equipment and processes;',
+  'injuries caused by accidents;',
+  'damage to property;',
+  'psychological stress and/or damage; and',
+  'other similar risks.',
+];
+
+export const FacilityTermsDialog = ({ open, onClose }) => {
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-3 sm:p-6 bg-black/60" onClick={onClose} role="dialog" aria-modal="true" aria-label="Terms and Conditions">
+      <div className="bg-card text-foreground rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="px-6 py-4 border-b border-border flex items-start justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">CvSU Research Center</p>
+            <h2 className="font-heading text-base sm:text-lg font-bold text-primary">Facility/Equipment Use Terms and Conditions</h2>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close" className="bg-transparent border-none text-muted-foreground hover:text-foreground cursor-pointer p-1 flex-shrink-0">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="px-6 py-5 overflow-y-auto text-sm leading-relaxed space-y-6">
+          <ol className="list-decimal pl-5 space-y-2.5 text-muted-foreground marker:font-semibold marker:text-foreground">
+            {FACILITY_TERMS.map((term) => <li key={term.slice(0, 40)} className="pl-1">{term}</li>)}
+          </ol>
+
+          <div className="space-y-3">
+            <h3 className="font-heading text-sm sm:text-base font-bold text-primary text-center uppercase leading-snug">
+              Assumption of Risk, Release and Waiver of Liability and Indemnity Agreement for Facility/Equipment Use
+            </h3>
+            <p className="text-muted-foreground">
+              In relation to the undersigned stakeholder&apos;s request to use the facilities and/or equipment of CvSU - Research Center (CvSU-RC), the undersigned for himself/herself, his/her respective heirs, personal representatives and assigns, agrees as follows:
+            </p>
+            <p className="text-muted-foreground">
+              <strong className="text-foreground">Assumption of Risk:</strong> The undersigned acknowledges and understands that the use of CvSU-RC&apos;s facilities and/or equipment may involve certain inherent risks and dangers including but not limited to:
+            </p>
+            <ul className="list-disc pl-10 space-y-1 text-muted-foreground">
+              {RISKS.map((risk) => <li key={risk}>{risk}</li>)}
+            </ul>
+            <p className="text-muted-foreground">
+              The undersigned hereby knowingly and voluntarily, accepts, and assumes responsibility for, each of these risks and dangers, and all other risks and dangers that could arise out of, or occur during the use of CvSU-RC&apos;s facilities and equipment.
+            </p>
+            <p className="text-muted-foreground">
+              <strong className="text-foreground">Release and Waiver:</strong> The undersigned hereby RELEASES, WAIVES, DISCHARGES AND COVENANTS NOT TO SUE Cavite State University, its officers, directors, employees, agents, successors and/or assigns from all claims, actions, losses, damages, costs, expenses and liabilities, including attorney&apos;s fees resulting from any personal injury, accident or illness (including death), and/or property loss, arising out of or in connection with the use of CvSU-RC&apos;s facilities and/or equipment.
+            </p>
+            <p className="text-muted-foreground">
+              <strong className="text-foreground">Indemnity:</strong> The undersigned also hereby agree to INDEMNIFY, DEFEND AND HOLD HARMLESS Cavite State University and/or any of its duly authorized representatives from any and all claims, actions, losses, damages, costs, expenses and liabilities, including attorney&apos;s fees arising from, or in any way related to with the use of CvSU-RC&apos;s facilities and/or equipment and to reimburse them for any such expenses incurred.
+            </p>
+            <p className="text-muted-foreground">
+              <strong className="text-foreground">Severability:</strong> The undersigned further expressly agrees that the foregoing waiver and assumption of risks agreement is intended to be as broad and inclusive as is permitted by the Philippines laws and that if any portion thereof is held invalid or unenforceable, the remaining provisions shall continue in full legal force and effect.
+            </p>
+            <p className="text-muted-foreground">
+              I have read this assumption of risk, release and waiver of liability and indemnity agreement, and have had the opportunity to ask questions about the same. I fully understand that I am giving up substantial rights in connection therewith, and that its terms are contractual, and not a mere recital. I acknowledge that I am signing the agreement freely and voluntarily, and intend by my signature to be a complete and unconditional release of all liability to the greatest extent allowed by law.
+            </p>
+          </div>
+        </div>
+
+        <div className="px-6 py-4 border-t border-border flex justify-end">
+          <button type="button" onClick={onClose} className="px-5 py-2 rounded-lg text-sm font-semibold gradient-primary text-primary-foreground border-none cursor-pointer hover:opacity-90 transition-opacity">
+            Close
+          </button>
         </div>
       </div>
     </div>

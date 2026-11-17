@@ -11,7 +11,7 @@ export const parseMembers = (list) => {
   const rows = (Array.isArray(list) ? list : [])
     .filter((entry) => typeof entry === 'string' && entry.trim())
     .map((entry) => {
-      const [name, rest = ''] = String(entry).split(/\s+—\s+Student No\.\s*/);
+      const [name, rest = ''] = String(entry).replace(/\s+—\s+Section\s+.+$/, '').split(/\s+—\s+Student No\.\s*/);
       return { name: (name || '').trim(), studentNumber: rest.trim() };
     })
     .filter((m) => m.name);

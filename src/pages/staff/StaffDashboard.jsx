@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { CalendarCheck, Hourglass, FlaskConical, Package } from 'lucide-react';
 import ReservationCalendarView from '@/components/ReservationCalendarView';
-import MonthlyPieCharts from '@/components/MonthlyPieCharts';
+import MonthlyPieCharts, { EquipmentStatusBarChart } from '@/components/MonthlyPieCharts';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -76,6 +76,8 @@ const StaffDashboard = () => {
       </div>
 
       {/* Monthly pie charts: reservations + problem reports */}
+      <EquipmentStatusBarChart roomIds={assignedRoomIds} />
+
       <MonthlyPieCharts roomIds={assignedRoomIds} />
     </div>);
 

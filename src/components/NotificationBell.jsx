@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Bell, Check, CalendarCheck, Package, XCircle, CheckCircle2, MessageSquare, Trash2 } from 'lucide-react';
+import { Bell, Check, CalendarCheck, Package, XCircle, CheckCircle2, MessageSquare, Trash2, PackageOpen, PackageCheck, AlarmClock, AlertTriangle, RefreshCw, PackageX } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -13,7 +13,13 @@ const ICONS = {
   new_reservation: CalendarCheck,
   equipment_added: Package,
   equipment_removed: Trash2,
-  reservation_message: MessageSquare
+  reservation_message: MessageSquare,
+  equipment_released: PackageOpen,
+  equipment_returned: PackageCheck,
+  return_reminder: AlarmClock,
+  return_overdue: AlertTriangle,
+  reservation_status: RefreshCw,
+  low_stock: PackageX
 };
 
 const NotificationBell = ({ reservationsLink = '/user/reservations', equipmentLink = '/admin/equipment' }) => {
@@ -67,7 +73,7 @@ const NotificationBell = ({ reservationsLink = '/user/reservations', equipmentLi
       await supabase.from('notifications').update({ is_read: true }).eq('id', n.id);
     }
     setOpen(false);
-    const baseLink = n.type === 'equipment_added' ? equipmentLink : reservationsLink;
+    const baseLink = n.type === 'equipment_added' || n.type === 'low_stock' ? equipmentLink : reservationsLink;
     // If this notification is about a specific reservation, jump straight to
     // it (the target page reads ?open=type:id and scrolls/opens it).
     const target = n.reservation_type && n.reservation_id

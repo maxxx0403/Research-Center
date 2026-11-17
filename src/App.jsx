@@ -35,6 +35,7 @@ import StaffSettings from "./pages/staff/StaffSettings";
 import StaffUnavailability from "./pages/staff/StaffUnavailability";
 import UserDashboard from "./pages/user/UserDashboard";
 import UserReserve from "./pages/user/UserReserve";
+import UserEquipment from "./pages/user/UserEquipment";
 import UserReserveEquipment from "./pages/user/UserReserveEquipment";
 import UserReservations from "./pages/user/UserReservations";
 import UserCalendarReservations from "./pages/user/UserCalendarReservations";
@@ -79,7 +80,8 @@ const App = () =>
           <PrivacyNotice />
           <Routes>
             <Route path="/" element={<Index />} />
-            <Route path="/login" element={<Login />} />
+            <Route path="/login" element={<Login key="login" mode="login" />} />
+            <Route path="/register" element={<Login key="register" mode="register" />} />
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/user-login" element={<Navigate to="/login" replace />} />
             <Route path="/reserve" element={<Reserve />} />
@@ -113,6 +115,7 @@ const App = () =>
             </Route>
             <Route path="/user" element={<UserLayout />}>
               <Route path="dashboard" element={<UserDashboard />} />
+              <Route path="availability" element={<UserEquipment />} />
               <Route path="reserve" element={<UserReserve />} />
               <Route path="reserve-equipment" element={<UserReserveEquipment />} />
               <Route path="reservations" element={<UserReservations />} />

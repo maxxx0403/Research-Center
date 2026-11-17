@@ -20,7 +20,7 @@ const ActivityLogs = () => {
     const { data, error: fetchError } = await fetchAllPages(() =>
       supabase
         .from('activity_logs')
-        .select('id, action, description, floor, actor, created_at')
+        .select('id, action, description, floor, actor, actor_role, created_at')
         .not('actor', 'is', null)
         .neq('actor', '')
         .not('actor', 'ilike', 'system')

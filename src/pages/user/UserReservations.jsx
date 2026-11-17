@@ -4,7 +4,7 @@ import { Edit2, Trash2, X, Check, ChevronDown, ChevronUp, ChevronLeft, ChevronRi
 
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import StatusBadge from '@/components/StatusBadge';
+import StatusBadge, { BorrowInfo } from '@/components/StatusBadge';
 import ReservationMonthFilter from '@/components/ReservationMonthFilter';
 import RowActions, { ItemCancelControls, SelectedCancelBar, useCancelSelection } from '@/components/RowActions';
 import RejectionNote from '@/components/RejectionNote';
@@ -716,6 +716,7 @@ x{group.totalQuantity}
       </>),
       status: (<>
                       <StatusBadge status={group.status} />
+                      <BorrowInfo rows={group.items} />
                       {group.mixedStatus && <p className="text-[0.65rem] text-muted-foreground mt-1">Mixed — see items</p>}
                       <RejectionNote
                         reasons={group.rejectionReasons}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isDuplicateEquipment, isDuplicateLaboratory } from './catalogValidation';
+import { findDuplicateEquipment, isDuplicateEquipment, isDuplicateLaboratory } from './catalogValidation';
 
 describe('catalog duplicate validation', () => {
   it('matches laboratories by code regardless of case or surrounding spaces', () => {
@@ -47,5 +47,15 @@ describe('catalog duplicate validation', () => {
       laboratory_id: 4,
     })).toBe(false);
     expect(isDuplicateEquipment(equipment, equipment[0], 1)).toBe(false);
+  });
+
+  it('returns the matching equipment row so its quantity can be increased', () => {
+    const equipment = [
+      { id: 1, name: 'Microscope', brand: 'Olympus', model: 'BX53', laboratory_id: 6, quantity: 3 },
+      { id: 2, name: 'Microscope', brand: 'Olympus', model: 'BX53', laboratory_id: 7, quantity: 1 },
+    ];
+    expect(findDuplicateEquipment(equipment, { name: 'microscope ', brand: 'OLYMPUS', model: 'bx53', laboratory_id: '7' })?.id).toBe(2);
+    expect(findDuplicateEquipment(equipment, { name: 'Microscope', brand: '', model: 'BX53', laboratory_id: 6 })).toBeUndefined();
+    expect(findDuplicateEquipment(equipment, { name: 'Microscope', brand: 'Olympus', model: 'BX53', laboratory_id: '' })).toBeUndefined();
   });
 });

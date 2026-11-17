@@ -1,5 +1,5 @@
 import { APP_TIMEZONE } from '@/lib/timezone';
-import { monthLabel } from '@/lib/monthRange';
+import { downloadExcelReport, excelFileName, reportInfo } from '@/lib/exportReservations';
 
 const formatTimestamp = (value) => {
   if (!value) return '';
@@ -16,52 +16,51 @@ const formatTimestamp = (value) => {
   }).format(date);
 };
 
-export const downloadActivityLogsExcel = async (logs, month) => {
-  const ExcelJS = (await import('exceljs')).default;
-  const workbook = new ExcelJS.Workbook();
-  workbook.creator = 'Reservation System';
-  workbook.created = new Date();
+const actionLabel = (action) =>
+  (action || '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
-  const sheet = workbook.addWorksheet('Activity Logs', { views: [{ state: 'frozen', ySplit: 1 }] });
-  sheet.columns = [
-    { header: 'Time (PH)', key: 'time', width: 24 },
-    { header: 'User', key: 'actor', width: 28 },
-    { header: 'Action', key: 'action', width: 32 },
-    { header: 'Description', key: 'description', width: 80 },
-    { header: 'Floor', key: 'floor', width: 18 },
+/**
+ * Downloads the activity logs as a print-ready Excel file:
+ * title, dates covered, date generated, a count per action, then every log.
+ */
+export const downloadActivityLogsExcel = async (logs, month) => {
+  const counts = new Map();
+  logs.forEach((log) => {
+    const key = actionLabel(log.action) || 'Other';
+    counts.set(key, (counts.get(key) || 0) + 1);
+  });
+  const summary = [
+    ...[...counts.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([label, value]) => ({ label, value })),
+    { label: 'Total', value: logs.length, bold: true },
   ];
 
-  logs.forEach((log) => sheet.addRow({
-    time: formatTimestamp(log.created_at),
-    actor: log.actor || '',
-    action: (log.action || '').replace(/_/g, ' '),
-    description: log.description || '',
-    floor: log.floor || '',
-  }));
-
-  const header = sheet.getRow(1);
-  header.font = { name: 'Arial', bold: true, color: { argb: 'FFFFFFFF' } };
-  header.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF166534' } };
-  header.alignment = { vertical: 'middle', horizontal: 'left' };
-  header.height = 22;
-
-  sheet.eachRow((row, index) => {
-    if (index === 1) return;
-    row.font = { name: 'Arial', size: 10 };
-    row.alignment = { vertical: 'top', wrapText: true };
+  await downloadExcelReport({
+    fileName: excelFileName('activity-logs', month),
+    sheets: [{
+      name: 'Activity Logs',
+      title: 'Activity Logs Report',
+      info: reportInfo({ month, extra: [['Total Activities', logs.length]] }),
+      summaryTitle: 'Activity Summary',
+      summary,
+      columns: [
+        { header: 'Time (PH)', key: 'time', width: 24 },
+        { header: 'User', key: 'actor', width: 28 },
+        { header: 'Role', key: 'role', width: 12 },
+        { header: 'Action', key: 'action', width: 28 },
+        { header: 'Description', key: 'description', width: 80 },
+        { header: 'Floor', key: 'floor', width: 18 },
+      ],
+      rows: logs.map((log) => ({
+        time: formatTimestamp(log.created_at),
+        actor: log.actor || '',
+        role: actionLabel(log.actor_role),
+        action: actionLabel(log.action),
+        description: log.description || '',
+        floor: log.floor || '',
+      })),
+      emptyText: 'No activity found.',
+    }],
   });
-  sheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: sheet.columns.length } };
-
-  const buffer = await workbook.xlsx.writeBuffer();
-  const blob = new Blob([buffer], {
-    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `activity-logs-${month}.xlsx`;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
 };

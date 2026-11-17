@@ -77,9 +77,17 @@ const Navbar = () => {
             <li>
               <Link
                 to="/login"
-                className="gradient-primary text-primary-foreground px-5 py-2.5 rounded-full font-semibold shadow-card hover:-translate-y-0.5 hover:shadow-lg transition-all no-underline ml-2 inline-block"
+                className="bg-card text-primary border-2 border-primary px-5 py-2 rounded-full font-semibold shadow-card hover:bg-primary hover:text-primary-foreground hover:-translate-y-0.5 hover:shadow-lg transition-all no-underline inline-block ml-2"
               >
-                Login / Register
+                Login
+              </Link>
+            </li>
+            <li>
+              <Link
+                to="/register"
+                className="bg-card text-primary border-2 border-primary px-5 py-2 rounded-full font-semibold shadow-card hover:bg-primary hover:text-primary-foreground hover:-translate-y-0.5 hover:shadow-lg transition-all no-underline inline-block"
+              >
+                Register
               </Link>
             </li>
           </ul>
@@ -110,10 +118,17 @@ const Navbar = () => {
             )}
             <Link
               to="/login"
-              className="gradient-primary text-primary-foreground px-4 py-3 rounded-full font-semibold text-center no-underline mt-1"
+              className="bg-card text-primary border-2 border-primary hover:bg-primary hover:text-primary-foreground transition-colors px-4 py-2.5 rounded-full font-semibold text-center no-underline mt-1"
               onClick={() => setMobileOpen(false)}
             >
-              Login / Register
+              Login
+            </Link>
+            <Link
+              to="/register"
+              className="bg-card text-primary border-2 border-primary hover:bg-primary hover:text-primary-foreground transition-colors px-4 py-2.5 rounded-full font-semibold text-center no-underline mt-1"
+              onClick={() => setMobileOpen(false)}
+            >
+              Register
             </Link>
           </div>
         </div>
