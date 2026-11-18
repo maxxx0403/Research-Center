@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
 import { Edit2, Trash2, X, Check, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Package, FlaskConical, FileDown, MessageSquare, Search } from 'lucide-react';
 
 import { supabase } from '@/integrations/supabase/client';
@@ -16,7 +16,10 @@ import {
   resubmitEquipmentReservations,
   cancelReservationBatch,
   cancelReservationItems,
+  describeLabSchedules,
+  reserveLabLink,
 } from '@/lib/reservationUtils';
+import { notifyReservationStatusChanged } from '@/lib/notifications';
 import { downloadRequestForm, downloadLabBatchRequestForm, downloadEquipmentRequestForm } from '@/lib/generateRequestForm';
 import ReservationMessagesPanel from '@/components/ReservationMessagesPanel';
 import { earliestBookableInput, earliestBookableLabel, manilaInputToISO, toManilaInputValue, validateBookingDateTime, MIN_ADVANCE_DAYS } from '@/lib/timezone';
@@ -165,6 +168,31 @@ const UserReservations = () => {
 
   useEffect(() => { if (user) fetchData(); }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Real-time: statuses change on screen as soon as admin/staff (or the system) update them.
+  useEffect(() => {
+    if (!user) return undefined;
+    let timer = null;
+    const refresh = () => { window.clearTimeout(timer); timer = window.setTimeout(fetchData, 400); };
+    const channel = supabase
+      .channel(`my-reservations-${user.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reservations', filter: `user_id=eq.${user.id}` }, refresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'equipment_reservations', filter: `user_id=eq.${user.id}` }, refresh)
+      .subscribe();
+    return () => { window.clearTimeout(timer); supabase.removeChannel(channel); };
+  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Confirmation in the notification bell when the applicant cancels their own request.
+  const notifySelfCancel = (type, ids) => {
+    if (!user?.id || !ids?.length) return;
+    notifyReservationStatusChanged({
+      userId: user.id,
+      label: type === 'lab' ? `Reservation #RC${String(ids[0]).padStart(5, '0')}` : `Equipment request #EQ${String(ids[0]).padStart(5, '0')}`,
+      status: 'cancelled',
+      reservationType: type,
+      reservationId: ids[0],
+    });
+  };
+
   // Coming from a notification click (?open=lab:12 or ?open=equipment:7):
   // open that reservation's message thread and scroll to/highlight its row.
   useEffect(() => {
@@ -199,6 +227,7 @@ const UserReservations = () => {
     if (!confirm('Cancel this reservation?')) return;
     try {
       await cancelReservation(id);
+      notifySelfCancel('lab', [id]);
       fetchData();
     } catch (error) {
       console.error('Error cancelling reservation:', error);
@@ -225,6 +254,7 @@ const UserReservations = () => {
     setCancellingItems(true);
     try {
       await cancelReservationItems(type === 'lab' ? 'reservations' : 'equipment_reservations', items.map((it) => it.id), CANCELLABLE_ITEM_STATUSES);
+      notifySelfCancel(type, items.map((it) => it.id));
       cancelSel.clear(group.key);
       await fetchData();
     } catch (error) {
@@ -239,6 +269,7 @@ const UserReservations = () => {
     try {
       const cancellableIds = group.items.filter((it) => it.status === 'pending' || it.status === 'reserved').map((it) => it.id);
       await cancelReservationBatch(cancellableIds);
+      notifySelfCancel('lab', cancellableIds);
       fetchData();
     } catch (error) {
       console.error('Error cancelling reservation:', error);
@@ -263,6 +294,7 @@ const UserReservations = () => {
     try {
       const cancellableIds = group.items.filter((it) => it.status === 'pending' || it.status === 'reserved').map((it) => it.id);
       await supabase.from('equipment_reservations').update({ status: 'cancelled' }).in('id', cancellableIds);
+      notifySelfCancel('equipment', cancellableIds);
       fetchData();
     } catch (error) {
       console.error('Error cancelling equipment reservation:', error);
@@ -494,6 +526,25 @@ const UserReservations = () => {
                         reasons={group.rejectionReasons}
                         onOpen={() => setMessagingItem({ type: 'lab', id: primary.id, label: `Reservation #RC${String(primary.id).padStart(5, '0')}`, reason: group.rejectionReasons[0] })}
                       />
+                      {(() => {
+                        // Rejected because another group got the same schedule: offer free alternatives.
+                        const withAlts = group.items.find((it) => it.status === 'rejected' && Array.isArray(it.suggested_schedules) && it.suggested_schedules.length);
+                        if (!withAlts) return null;
+                        return (
+                          <div className="mt-2 rounded-lg border border-primary/20 bg-primary/5 p-2">
+                            <p className="text-[0.7rem] font-bold text-primary mb-1">Other available schedules</p>
+                            <ul className="space-y-1 list-none p-0 m-0">
+                              {describeLabSchedules(withAlts.suggested_schedules).map((alt) => (
+                                <li key={alt.start}>
+                                  <Link to={reserveLabLink(withAlts.laboratory_id, alt)} className="text-[0.7rem] font-semibold text-primary underline hover:no-underline">
+                                    {alt.text} — Book this
+                                  </Link>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        );
+                      })()}
       </>),
       actions: (<>
                       <RowActions

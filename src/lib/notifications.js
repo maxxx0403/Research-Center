@@ -111,3 +111,22 @@ export const notifyEquipmentReturned = async ({ userId, label, conditionText, no
   reservationType: 'equipment',
   reservationId,
 });
+
+const STATUS_WORDS = {
+  pending: 'set back to Pending',
+  reserved: 'Approved',
+  in_use: 'now In Use',
+  completed: 'Completed',
+  cancelled: 'Cancelled',
+  rejected: 'Rejected',
+};
+
+/** Any other status change made by admin/staff (e.g. "Change status"). */
+export const notifyReservationStatusChanged = async ({ userId, label, status, reservationType, reservationId }) => createNotification({
+  userId,
+  type: 'reservation_status',
+  title: `${label} ${STATUS_WORDS[status] || `changed to ${status}`}`,
+  message: `The status of your ${reservationType === 'equipment' ? 'equipment request' : 'reservation'} is now: ${STATUS_WORDS[status] || status}.`,
+  reservationType,
+  reservationId,
+});
