@@ -89,21 +89,21 @@ const UserLayout = () => {
         <div className="absolute -bottom-28 left-[18%] w-[500px] h-[500px] rounded-full bg-primary/30 blur-3xl" />
         <div className="absolute -bottom-16 right-[8%] w-[420px] h-[420px] rounded-full bg-emerald-400/35 blur-3xl" />
       </div>
-      <div className={`fixed inset-0 bg-foreground/50 z-40 lg:hidden transition-opacity duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${sidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} onClick={() => setSidebarOpen(false)} />
-      <aside className={`w-[260px] ${sidebarOpen ? '' : 'lg:w-16'} min-h-screen bg-primary/80 backdrop-blur-2xl backdrop-saturate-150 border-r border-white/20 shadow-[8px_0_32px_rgba(20,60,40,0.15)] text-primary-foreground fixed top-0 left-0 z-50 flex flex-col transition-[transform,width] duration-[350ms] ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform motion-reduce:transition-none ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
-        <div className={`p-5 ${sidebarOpen ? '' : 'lg:px-[14px]'} border-b border-primary-foreground/10 transition-[padding] duration-[350ms] ease-[cubic-bezier(0.22,1,0.36,1)]`}>
+      <div className={`fixed inset-0 bg-foreground/50 z-40 lg:hidden transition-opacity duration-300 [transition-timing-function:cubic-bezier(0.22,1,0.36,1)] ${sidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} onClick={() => setSidebarOpen(false)} />
+      <aside className={`w-[260px] ${sidebarOpen ? '' : 'lg:w-16'} min-h-screen bg-primary/80 backdrop-blur-2xl backdrop-saturate-150 border-r border-white/20 shadow-[8px_0_32px_rgba(20,60,40,0.15)] text-primary-foreground fixed top-0 left-0 z-50 flex flex-col transition-[transform,width] [transition-duration:350ms] [transition-timing-function:cubic-bezier(0.22,1,0.36,1)] will-change-transform motion-reduce:transition-none ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
+        <div className={`p-5 ${sidebarOpen ? '' : 'lg:px-[14px]'} border-b border-primary-foreground/10 transition-[padding] [transition-duration:350ms] [transition-timing-function:cubic-bezier(0.22,1,0.36,1)]`}>
           <div className="flex items-center gap-3">
             <img src={cvsuLogo} alt="CvSU Logo" className="w-9 h-9 flex-shrink-0" width={36} height={36} />
-            <div className={`overflow-hidden whitespace-nowrap transition-all duration-[350ms] ease-[cubic-bezier(0.22,1,0.36,1)] ${sidebarOpen ? 'max-w-[200px] opacity-100' : 'lg:max-w-0 lg:opacity-0'}`}><div className="font-heading font-bold text-sm leading-tight">CvSU Research Center</div><div className="text-[0.7rem] text-primary-foreground/50">Researcher Portal</div></div>
+            <div className={`overflow-hidden whitespace-nowrap transition-all [transition-duration:350ms] [transition-timing-function:cubic-bezier(0.22,1,0.36,1)] ${sidebarOpen ? 'max-w-[200px] opacity-100' : 'lg:max-w-0 lg:opacity-0'}`}><div className="font-heading font-bold text-sm leading-tight">CvSU Research Center</div><div className="text-[0.7rem] text-primary-foreground/50">Researcher Portal</div></div>
           </div>
         </div>
         <SidebarNav groups={menuGroups} sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} onAction={(action) => { if (action === 'terms') setShowTerms(true); }} />
       </aside>
 
-      <div className={`flex-1 min-w-0 flex flex-col min-h-screen transition-[margin] duration-[350ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${sidebarOpen ? 'lg:ml-[260px]' : 'lg:ml-16'}`}>
+      <div className={`flex-1 min-w-0 flex flex-col min-h-screen transition-[margin] [transition-duration:350ms] [transition-timing-function:cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${sidebarOpen ? 'lg:ml-[260px]' : 'lg:ml-16'}`}>
         <header className="bg-white/40 backdrop-blur-2xl backdrop-saturate-150 border-b border-white/60 px-3 sm:px-6 py-3.5 flex justify-between items-center sticky top-0 z-30 shadow-[0_4px_24px_rgba(20,60,40,0.08)]">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-            <button onClick={() => setSidebarOpen(!sidebarOpen)} aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'} className="bg-transparent border-none text-foreground cursor-pointer p-1.5 rounded-lg hover:bg-muted active:scale-90 transition-all duration-200"><ChevronLeft className={`w-5 h-5 transition-transform duration-[350ms] ease-[cubic-bezier(0.22,1,0.36,1)] ${sidebarOpen ? 'rotate-0' : 'rotate-180'}`} /></button>
+            <button onClick={() => setSidebarOpen(!sidebarOpen)} aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'} className="bg-transparent border-none text-foreground cursor-pointer p-1.5 rounded-lg hover:bg-muted active:scale-90 transition-all duration-200"><ChevronLeft className={`w-5 h-5 transition-transform [transition-duration:350ms] [transition-timing-function:cubic-bezier(0.22,1,0.36,1)] ${sidebarOpen ? 'rotate-0' : 'rotate-180'}`} /></button>
             <h1 className="font-heading text-base font-bold text-foreground truncate">{menuItems.find((m) => m.to === location.pathname)?.label || 'Research Panel'}</h1>
           </div>
           <div className="flex items-center gap-3">
